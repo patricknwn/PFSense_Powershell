@@ -207,13 +207,15 @@ Function Get-Request{
     return $request
 }
 
-#######
-# All the dict's I have created to upload data to the pfsense
-#######
+###############
+# First we need to connect to the pfsense.
+###############
 
 test-connection -Server $Server -NoTLS
 $Connection = Connect-pfSense -Server $Server -Credentials $DefaulkCred -NoTLS 
-
+#######
+# All the dict's I have created to upload data to the pfsense
+#######
 # Upload config to pfsense:
 $LF = "`r`n" 
 $configjoined = $config -join $LF
@@ -322,6 +324,80 @@ $dictPostData = @{
     apply="Apply+Changes"}
 Post-request -Session @Connection -dictPostData $dictPostData -UriGetExtension "firewall_aliases.php?tab=ip" -UriPostExtension "firewall_aliases.php?tab=ip"
 
+# extend Alias whith new data
+# If you add a Host $dictToAdd looks like this @{Host="Descrition"}
+# If you add a Port $dictToAdd looks like this @{Port="Descrition"}
+# If you add a Network the $dictToAdd looks like @{Network="Subnet","Descrition"}
+$dictToAdd = @{"192.168.2.0"="24","Test_one_two three"}
+$get_alias = get-Request -Session @Connection -UriGetExtension "firewall_aliases.php?tab=all"
+$all_alias = $($get_alias.ParsedHtml.body.getElementsByClassName("table table-striped table-hover table-condensed sortable-theme-bootstrap") | %{$_.InnerText}).split([Environment]::NewLine)
+ForEach ($line in $($all_alias[1..$all_alias.Length] | Where-Object {$_})){Write-host $Line}
+#ToDo check if name exciste
+$alias_name = Read-Host -Prompt "Please give name of the alias you would like to change"
+$alias_id = $($get_alias.ParsedHtml.body.getElementsByClassName("table table-striped table-hover table-condensed sortable-theme-bootstrap") | %{$_.innerHTML}).split([Environment]::NewLine) | select-string -pattern "$alias_name" | Out-String 
+$alias_content_get = get-Request -Session @Connection -UriGetExtension "$($alias_id.split("'")[1])"
+$($alias_content_get.ParsedHtml.getElementById("type")) | %{if($_.selected) {$type_value = $_.value()} }
+$indexNumber = 0
+$dictPostData = @{
+    name = $($alias_content_get.ParsedHtml.getElementById("name")).value
+    descr= $($alias_content_get.ParsedHtml.getElementById("descr")).value
+    type = $type_value
+    tab = $($alias_content_get.ParsedHtml.getElementById("tab")).value
+    origname = $($alias_content_get.ParsedHtml.getElementById("origname")).value
+    id = $($alias_content_get.ParsedHtml.getElementById("id")).value
+    save="Save"}
+if($type_value -eq "host"){
+    while($True){
+        if(-not $($alias_content_get.ParsedHtml.getElementById("detail$indexnumber")).value){break}
+        $dictPostData.Add("address$indexnumber",$($alias_content_get.ParsedHtml.getElementById("address$indexnumber")).value)
+        $dictPostData.Add("detail$indexnumber",$($alias_content_get.ParsedHtml.getElementById("detail$indexnumber")).value)
+        $indexNumber++
+    }
+    $dictToAdd.keys | % {
+        $dictPostData.Add("address$indexnumber",$_)
+        $dictPostData.Add("detail$indexnumber",$dictToAdd.Item($_))
+        $indexNumber++    
+    }
+}
+ElseIf($type_value -eq "network"){
+    while($True){
+        if(-not $($alias_content_get.ParsedHtml.getElementById("detail$indexnumber")).value){break}
+        $dictPostData.Add("address$indexnumber",$($alias_content_get.ParsedHtml.getElementById("address$indexnumber")).value)
+        $dictPostData.Add("detail$indexnumber",$($alias_content_get.ParsedHtml.getElementById("detail$indexnumber")).value)
+        $($alias_content_get.ParsedHtml.getElementById("address_subnet$indexnumber")) | %{if($_.selected) {$dictPostData.Add("address_subnet$indexnumber",$_.value())}}
+        $indexNumber++
+    }
+    $dictToAdd.keys | % {
+        $dictPostData.Add("address$indexnumber",$_)
+        $dictPostData.Add("detail$indexnumber",$dictToAdd.Item($_)[1])
+        $dictPostData.Add("address_subnet$indexnumber",$dictToAdd.Item($_)[0])
+        $indexNumber++ 
+    }  
+}
+ElseIf($type_value -eq "port"){
+    while($True){
+        if(-not $($alias_content_get.ParsedHtml.getElementById("detail$indexnumber")).value){break}
+        $dictPostData.Add("address$indexnumber",$($alias_content_get.ParsedHtml.getElementById("address$indexnumber")).value)
+        $dictPostData.Add("detail$indexnumber",$($alias_content_get.ParsedHtml.getElementById("detail$indexnumber")).value)
+        $indexNumber++
+    }
+    $dictToAdd.keys | % {
+        $dictPostData.Add("address$indexnumber",$_)
+        $dictPostData.Add("detail$indexnumber",$dictToAdd.Item($_))
+        $indexNumber++    
+    }
+}
+Post-request -Session @Connection -dictPostData $dictPostData -UriGetExtension "firewall_aliases_edit.php?id=$dictPostData.id" -UriPostExtension "firewall_aliases_edit.php?id=$dictPostData.id"
+# Apply the changes
+$dictPostData = @{
+    apply="Apply+Changes"}
+Post-request -Session @Connection -dictPostData $dictPostData -UriGetExtension "firewall_aliases.php" -UriPostExtension "firewall_aliases.php"
+
+# ToDo: Delete a Alias
+
+# ToDo: Delete a entry from a alias
+
+
 # Add Route
 $dictPostData = @{
     network="192.168.210.0"
@@ -335,13 +411,14 @@ $dictPostData = @{
         apply="Apply+Changes"}
 Post-request -Session @Connection -dictPostData $dictPostData -UriGetExtension "system_routes.php" -UriPostExtension "system_routes.php"
 
+# ToDo: Delete a route
+
 # Bind
 # first we need to count the number of acl's that already excist:
 $get_all_acl = get-Request -Session @Connection -UriGetExtension "pkg.php?xml=bind_acls.xml"
 $all_acl_Div = $($get_all_acl.ParsedHtml.body.getElementsByClassName("table table-striped table-hover table-condensed") | %{$_.InnerText}).split([Environment]::NewLine)
 $indexNumber = 0
-$all_acl_Div[1..$($all_acl_Div.Length-2)] | Where-Object {$_}| foreach {$indexNumber++; write-host $_}
-$indexNumber
+$all_acl_Div[1..$($all_acl_Div.Length-2)] | Where-Object {$_}| foreach {$indexNumber++}
 # and then use the indexnumber to upload a new one
 $dictPostData = @{
     name="test1"
@@ -359,8 +436,7 @@ Post-request -Session @Connection -dictPostData $dictPostData -UriGetExtension "
 $get_all_views = get-Request -Session @Connection -UriGetExtension "pkg.php?xml=bind_views.xml"
 $all_views_Div = $($get_all_views.ParsedHtml.body.getElementsByClassName("table table-striped table-hover table-condensed") | %{$_.InnerText}).split([Environment]::NewLine)
 $indexNumber = 0
-$all_views_Div[1..$($all_views_Div.Length-2)] | Where-Object {$_}| foreach {$indexNumber++; write-host $_}
-$indexNumber
+$all_views_Div[1..$($all_views_Div.Length-2)] | Where-Object {$_}| foreach {$indexNumber++}
 $dictPostData = @{
     name="test"
     description="test"
@@ -374,15 +450,12 @@ $dictPostData = @{
     }
 Post-request -Session @Connection -dictPostData $dictPostData -UriGetExtension "pkg_edit.php?xml=bind_views.xml&id=$indexNumber" -UriPostExtension "pkg_edit.php?xml=bind_views.xml&id=$indexNumber"
 
-# Now we can add or edit a zone:
-#first we need the view to use:
+# Now we can add a zone:
+# first we need the view to use:
 $indexNumber = 0
 $get_all_views = get-Request -Session @Connection -UriGetExtension "pkg.php?xml=bind_views.xml"
 $all_views_Div = $($get_all_views.ParsedHtml.body.getElementsByClassName("table table-striped table-hover table-condensed") | %{$_.InnerText}).split([Environment]::NewLine)
+ForEach ($line in $($all_views_Div[1..$($all_views_Div.Length - 2)] | Where-Object {$_})){Write-host $Line}
+$view_name = Read-Host -Prompt "Please give name of the view you would like to change"
+# And now we can create our post dict to add a zone
 
-$all_views_Div[1..$($all_views_Div.Length-2)] | Where-Object {$_} | foreach {
-    'Line: {1} view Name {0}' -f $_,$indexNumber
-    $indexNumber++
-    }
-$view_id = Read-Host -Prompt "Please give the line number of the alias you would like to change"
-$all_views_Div[$view_id]
