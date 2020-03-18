@@ -332,11 +332,11 @@ Post-request -Session @Connection -dictPostData $dictPostData -UriGetExtension "
 # If you add a Network the $dictToAdd looks like @{Network="Subnet","Descrition"}
 $dictToAdd = @{"192.168.2.0"="24","Test_one_two three"}
 $get_alias = get-Request -Session @Connection -UriGetExtension "firewall_aliases.php?tab=all"
-$all_alias = $($get_alias.ParsedHtml.body.getElementsByClassName("table table-striped table-hover table-condensed sortable-theme-bootstrap") | %{$_.InnerText}).split([Environment]::NewLine)
-ForEach ($line in $($all_alias[1..$all_alias.Length] | Where-Object {$_})){Write-host $Line}
-#ToDo check if name exciste
-$alias_name = Read-Host -Prompt "Please give name of the alias you would like to change"
-$ID = $($($($get_alias.ParsedHtml.body.getElementsByClassName("table table-striped table-hover table-condensed sortable-theme-bootstrap") | %{$_.innerHTML}).split([Environment]::NewLine) | select-string -pattern "$alias_name") -split ";")[0] -replace "[^0-9]" , ''
+$all_alias = $($get_alias.ParsedHtml.body.getElementsByClassName("table table-striped table-hover table-condensed sortable-theme-bootstrap") | %{$_.InnerText}).split([Environment]::NewLine) | Where-Object {$_} | Select -Skip 1
+$indexNumber = 0
+$all_alias | %{"Option {0} is: {1}" -f $indexNumber,$all_alias[$indexnumber]; $indexNumber++ }
+$Alias_to_edit = Read-Host -Prompt "Please give number of the route you would like to delete"
+$ID = $($($($get_alias.ParsedHtml.body.getElementsByClassName("table table-striped table-hover table-condensed sortable-theme-bootstrap") | %{$_.innerHTML}).split([Environment]::NewLine) | select-string -pattern $($($all_alias[$Alias_to_edit]) -split "\s+")[0]) -split ";")[0] -replace "[^0-9]" , ''
 $alias_content_get = get-Request -Session @Connection -UriGetExtension "firewall_aliases_edit.php?id=$ID"
 $($alias_content_get.ParsedHtml.getElementById("type")) | %{if($_.selected) {$type_value = $_.value()} }
 $indexNumber = 0
@@ -463,11 +463,12 @@ Post-request -Session @Connection -dictPostData $dictPostData -UriGetExtension "
 # Now we can add a zone:
 # first we need the view to use:
 $get_all_views = get-Request -Session @Connection -UriGetExtension "pkg.php?xml=bind_views.xml"
-$all_views_Div = $($get_all_views.ParsedHtml.body.getElementsByClassName("table table-striped table-hover table-condensed") | %{$_.InnerText}).split([Environment]::NewLine)
-ForEach ($line in $($all_views_Div[1..$($all_views_Div.Length - 2)] | Where-Object {$_})){Write-host $Line}
-# ToDo: check if the name exists
-$view_name = Read-Host -Prompt "Please give name of the view you would like to change"
-# Count the amound of exicting views to set the ID field
+$all_views = $($get_all_views.ParsedHtml.body.getElementsByClassName("table table-striped table-hover table-condensed") | %{$_.InnerText}).split([Environment]::NewLine) | Where-Object {$_} | Select -Skip 1 | select -SkipLast 1
+$indexNumber = 0
+$all_views | %{"Option {0} is: {1}" -f $indexNumber,$all_views[$indexnumber]; $indexNumber++ }
+$view_to_use = Read-Host -Prompt "Please give number of the view you would like to use"
+$view_name = $($($all_views[$view_to_use]) -split "\s+")[0]
+# Count the amound of exicting zones to set the ID field
 $id = 0
 $get_all_zones = get-Request -Session @Connection -UriGetExtension "pkg.php?xml=bind_zones.xml&id=0"
 while($True){
@@ -517,12 +518,12 @@ $dictToAdd = @{
     hostdst = "123.234.212.1"
     hostvalue = ""}
 $get_Zones = get-Request -Session @Connection -UriGetExtension "pkg.php?xml=bind_zones.xml"
-# ToDo: only get the names from the line
-$($($get_Zones.ParsedHtml.getElementById("mainarea").innerText).split([Environment]::NewLine) | Where-Object {$_}) | Select -Skip 1 | Select -SkipLast 1
-$Zone_name = Read-Host -Prompt "Please give name of the Zone you would like to add a entry to"
-$ID = $($($get_Zones.ParsedHtml.getElementById("mainarea").innerHTML -split "<TD" | select-string -pattern "class=listlr>$Zone_name ") -split ";")[2] -replace "[^0-9]" , ''
+$all_zones = $($($($get_Zones.ParsedHtml.getElementById("mainarea").innerText).split([Environment]::NewLine) | Where-Object {$_}) | Select -Skip 1 | Select -SkipLast 1) | % {$($_ -split "\s+")[1] }
+$indexNumber = 0
+$all_zones | %{"Option {0} is: {1}" -f $indexNumber,$all_zones[$indexnumber]; $indexNumber++ }
+$zone_to_use = Read-Host -Prompt "Please give number of the view you would like to use"
+$ID = $($($get_Zones.ParsedHtml.getElementById("mainarea").innerHTML -split "<TD" | select-string -pattern $($all_zones[$zone_to_use])) -split ";")[2] -replace "[^0-9]" , ''
 $Get_zone_information = get-Request -Session @Connection -UriGetExtension "pkg_edit.php?xml=bind_zones.xml&act=edit&id=$ID"
-
 # Get the already filled in information:
 $indexNumber = 0
 $dictPostData = ""
