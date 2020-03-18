@@ -9,7 +9,6 @@ $config = Get-Content ($(Read-Host -Prompt "Please give the full path of the con
 #$CA_name = Read-Host -Prompt "Please give the name of the CA"
 #$CA_Data = Get-Content -Path $(Read-Host -Prompt "Please give the full path of file with the CA data")
 $Project = "PFsense1"
-$ID = "1" # The ID the CSR will get
 
 Function test-connection{
     <#
@@ -162,9 +161,7 @@ Function Post-request{
             $dictPostData.item("restore"),
             "--$boundry--") 
             $bodyLines = $bodyLines -join $LF
-            Write-Host $bodyLines
             $rawRet = Invoke-WebRequest -Uri $uri -Method Post -Body $bodyLines -WebSession $webSession -EA Stop -ContentType "multipart/form-data; boundary=$boundry" 
-            Write-Host $rawRet
         }
         Else{
             $rawRet = Invoke-WebRequest -Uri $uri -Method Post -Body $dictPostData -WebSession $webSession -EA Stop
@@ -297,9 +294,15 @@ $dictPostData=@{
     altname_value1="192.168.0.1"
     save="Save"}
 Post-request -Session @Connection -dictPostData $dictPostData -UriGetExtension "system_certmanager.php?act=new" -UriPostExtension "system_certmanager.php?act=edit"
+
+# Sign the CSR
+$request = Get-Request -Session @Connection -UriGetExtension "system_certmanager.php"
+# We need the ID of the csr we just created
+$ID = $($($($($request.parsedHtml.getElementsByTagName("div") | Where{ $_.className -eq "table-responsive" }).innerHTML -split "<TR>" | % {if($_ -match "CN=$($dictPostData.csr_dn_commonname.tostring())"){$_}}) -split "<A" | Select-String "href=")[0] -split ";")[1] -replace "[^0-9]" , ''
+# And now we can get the CSR
 $request = Get-Request -Session @Connection -UriGetExtension "system_certmanager.php?act=csr&id=$ID"
 $CertsignReq = $request.ParsedHtml.getElementById("csr").innerHTML
-#now we ask for the signed base64 code And Post the signed cert to the pfsense[string]$CertsignResp = Read-Host -Prompt "Please give thesignd entry"$dictPostData = @{
+#now we ask for the signed base64 code And Post the signed cert to the pfsense"The certificate signing request base64 is: `n`r{0} " -f $CertsignReq[string]$CertsignResp = Read-Host -Prompt "Please give thesignd entry"$dictPostData = @{
         descr=$Project
         csr=$CertsignReq
         cert=$CertsignResp
@@ -334,8 +337,8 @@ $all_alias = $($get_alias.ParsedHtml.body.getElementsByClassName("table table-st
 ForEach ($line in $($all_alias[1..$all_alias.Length] | Where-Object {$_})){Write-host $Line}
 #ToDo check if name exciste
 $alias_name = Read-Host -Prompt "Please give name of the alias you would like to change"
-$alias_id = $($get_alias.ParsedHtml.body.getElementsByClassName("table table-striped table-hover table-condensed sortable-theme-bootstrap") | %{$_.innerHTML}).split([Environment]::NewLine) | select-string -pattern "$alias_name" | Out-String 
-$alias_content_get = get-Request -Session @Connection -UriGetExtension "$($alias_id.split("'")[1])"
+$ID = $($($($get_alias.ParsedHtml.body.getElementsByClassName("table table-striped table-hover table-condensed sortable-theme-bootstrap") | %{$_.innerHTML}).split([Environment]::NewLine) | select-string -pattern "$alias_name") -split ";")[0] -replace "[^0-9]" , ''
+$alias_content_get = get-Request -Session @Connection -UriGetExtension "firewall_aliases_edit.php?id=$ID"
 $($alias_content_get.ParsedHtml.getElementById("type")) | %{if($_.selected) {$type_value = $_.value()} }
 $indexNumber = 0
 $dictPostData = @{
@@ -349,8 +352,7 @@ $dictPostData = @{
 if($type_value -eq "host"){
     while($True){
         if(-not $($alias_content_get.ParsedHtml.getElementById("detail$indexnumber")).value){break}
-        $dictPostData.Add("address$indexnumber",$($alias_content_get.ParsedHtml.getElementById("address$indexnumber")).value)
-        $dictPostData.Add("detail$indexnumber",$($alias_content_get.ParsedHtml.getElementById("detail$indexnumber")).value)
+        foreach ($entry in "address$indexnumber","detail$indexnumber") {$dictPostData.Add("$entry",$($alias_content_get.ParsedHtml.getElementById("$entry")).value)}
         $indexNumber++
     }
     $dictToAdd.keys | % {
@@ -362,8 +364,7 @@ if($type_value -eq "host"){
 ElseIf($type_value -eq "network"){
     while($True){
         if(-not $($alias_content_get.ParsedHtml.getElementById("detail$indexnumber")).value){break}
-        $dictPostData.Add("address$indexnumber",$($alias_content_get.ParsedHtml.getElementById("address$indexnumber")).value)
-        $dictPostData.Add("detail$indexnumber",$($alias_content_get.ParsedHtml.getElementById("detail$indexnumber")).value)
+        foreach ($entry in "address$indexnumber","detail$indexnumber") {$dictPostData.Add("$entry",$($alias_content_get.ParsedHtml.getElementById("$entry")).value)}
         $($alias_content_get.ParsedHtml.getElementById("address_subnet$indexnumber")) | %{if($_.selected) {$dictPostData.Add("address_subnet$indexnumber",$_.value())}}
         $indexNumber++
     }
@@ -377,8 +378,7 @@ ElseIf($type_value -eq "network"){
 ElseIf($type_value -eq "port"){
     while($True){
         if(-not $($alias_content_get.ParsedHtml.getElementById("detail$indexnumber")).value){break}
-        $dictPostData.Add("address$indexnumber",$($alias_content_get.ParsedHtml.getElementById("address$indexnumber")).value)
-        $dictPostData.Add("detail$indexnumber",$($alias_content_get.ParsedHtml.getElementById("detail$indexnumber")).value)
+        foreach ($entry in "address$indexnumber","detail$indexnumber") {$dictPostData.Add("$entry",$($alias_content_get.ParsedHtml.getElementById("$entry")).value)}
         $indexNumber++
     }
     $dictToAdd.keys | % {
@@ -452,10 +452,96 @@ Post-request -Session @Connection -dictPostData $dictPostData -UriGetExtension "
 
 # Now we can add a zone:
 # first we need the view to use:
-$indexNumber = 0
 $get_all_views = get-Request -Session @Connection -UriGetExtension "pkg.php?xml=bind_views.xml"
 $all_views_Div = $($get_all_views.ParsedHtml.body.getElementsByClassName("table table-striped table-hover table-condensed") | %{$_.InnerText}).split([Environment]::NewLine)
 ForEach ($line in $($all_views_Div[1..$($all_views_Div.Length - 2)] | Where-Object {$_})){Write-host $Line}
+# ToDo: check if the name exists
 $view_name = Read-Host -Prompt "Please give name of the view you would like to change"
+# Count the amound of exicting views to set the ID field
+$id = 0
+$get_all_zones = get-Request -Session @Connection -UriGetExtension "pkg.php?xml=bind_zones.xml&id=0"
+while($True){
+        if(-not $($get_all_zones.ParsedHtml.getElementById("id_$ID")).className){break}
+        $id++
+    }
 # And now we can create our post dict to add a zone
+$dictPostData = @{
+    name="local"
+    description="to+resolve+.local"
+    type="master"
+    "view[]"="test"
+    custom=""
+    tll="3600"
+    nameserver="root.local"
+    ipns="192.168.0.1"
+    mail=""
+    serial=""
+    refresh="1d"
+    retry="2h"
+    expire="4w"
+    minimum="1h"
+    "allowupdate[]"="none"
+    "allowquery[]"="any"
+    "allowtransfer[]"="any"
+    hostname0="root"
+    hosttype0="A"
+    hostvalue0=""
+    hostdst0="192.168.0.1"
+    hostname1="ns"
+    hosttype1="CNAME"
+    hostvalue1=""
+    hostdst1="root.local"
+    customzonerecords=""
+    xml="bind_zones.xml"
+    id="$id"
+    submit="Save"
+}
+Post-request -Session @Connection -dictPostData $dictPostData -UriGetExtension "pkg_edit.php?xml=bind_zones.xml&id=$id" -UriPostExtension "pkg_edit.php?xml=bind_zones.xml&id=0"
+
+# add entry's to a zone:
+# For now only one record can be added
+# Type can be: A, AAAA, DNAME, MX, CNAME, NS, LOC, SRV, PTR, TXT, SPF
+$dictToAdd = @{
+    hostname = "nu"
+    hosttype ="A"
+    hostdst = ""
+    hostvalue = "123.234.212.1"}
+$get_Zones = get-Request -Session @Connection -UriGetExtension "pkg.php?xml=bind_zones.xml"
+# ToDo: only get the names from the line
+$($($get_Zones.ParsedHtml.getElementById("mainarea").innerText).split([Environment]::NewLine) | Where-Object {$_}) | Select -Skip 1 | Select -SkipLast 1
+$Zone_name = Read-Host -Prompt "Please give name of the Zone you would like to add a entry to"
+$ID = $($($get_Zones.ParsedHtml.getElementById("mainarea").innerHTML -split "<TD" | select-string -pattern "class=listlr>$Zone_name ") -split ";")[2] -replace "[^0-9]" , ''
+$Get_zone_information = get-Request -Session @Connection -UriGetExtension "pkg_edit.php?xml=bind_zones.xml&act=edit&id=$ID"
+
+# Get the already filled in information:
+$indexNumber = 0
+$dictPostData = ""
+$dictPostData = @{
+    name=$($Get_zone_information.ParsedHtml.getElementById("name")).value
+    description=$($Get_zone_information.ParsedHtml.getElementById("description")).value
+    custom=""
+    tll=$($Get_zone_information.ParsedHtml.getElementById("tll")).value
+    nameserver=$($Get_zone_information.ParsedHtml.getElementById("nameserver")).value
+    ipns=$($Get_zone_information.ParsedHtml.getElementById("ipns")).value
+    mail=$($Get_zone_information.ParsedHtml.getElementById("mail")).value
+    serial=$($Get_zone_information.ParsedHtml.getElementById("serial")).value
+    refresh=$($Get_zone_information.ParsedHtml.getElementById("refresh")).value
+    retry=$($Get_zone_information.ParsedHtml.getElementById("retry")).value
+    expire=$($Get_zone_information.ParsedHtml.getElementById("expire")).value
+    minimum=$($Get_zone_information.ParsedHtml.getElementById("minimum")).value
+    customzonerecords=$($Get_zone_information.ParsedHtml.getElementById("customzonerecords")).value
+    xml="bind_zones.xml"
+    id=$($Get_zone_information.ParsedHtml.getElementById("id")).value
+    submit="Save"
+}
+foreach ($entry in "view[]","allowupdate[]","allowquery","allowtransfer[]","type"){$($Get_zone_information.ParsedHtml.getElementById("$entry")) | %{if($_.selected) {$dictPostData.Add("$entry",$_.value())}}}
+while($True){
+    if(-not $($Get_zone_information.ParsedHtml.getElementById("hostname$indexnumber").value)){break}
+    foreach ($entry in "hostname$indexNumber","hostvalue$indexNumber","hostdst$indexNumber","hosttype$indexNumber") {$dictPostData.Add("$entry",$($Get_zone_information.ParsedHtml.getElementById("$entry").value))}
+    $indexNumber++
+}
+# add the data from the dictToAdd
+$dictToAdd.keys | % { 
+$dictPostData.Add("$_$indexnumber",$dictToAdd.Item($_))}
+Post-request -Session @Connection -dictPostData $dictPostData -UriGetExtension "pkg_edit.php?xml=bind_zones.xml&id=$id" -UriPostExtension "pkg_edit.php?xml=bind_zones.xml&id=0"
 
