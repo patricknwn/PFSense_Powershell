@@ -176,7 +176,6 @@ Function Post-request{
     $error_statement = $rawRet.ParsedHtml.body.getElementsByClassName("alert alert-danger input-errors")
     $error_alert = $error_statement | %{$_.InnerText}
     if ($error_alert){Write-Warning $error_alert -WarningAction Inquire}
-    return $rawRet
 }
 
 Function Get-Request{
@@ -228,7 +227,7 @@ $Multiformdata = @{
     filename = "config.xml"
     restore = "Restore Configuration"
     }
-$raw_Data = Post-request -Session @Connection -dictPostData $Multiformdata -UriGetExtension "diag_backup.php" -UriPostExtension "diag_backup.php" -Multiform
+Post-request -Session @Connection -dictPostData $Multiformdata -UriGetExtension "diag_backup.php" -UriPostExtension "diag_backup.php" -Multiform
 # after uploading the config, the pfsense reboots, we have to wait for this
 test-connection -Server $Server -NoTLS -reboot
 $Connection = Connect-pfSense -Server $Server -Credentials $DefaulkCred -NoTLS
@@ -504,8 +503,8 @@ Post-request -Session @Connection -dictPostData $dictPostData -UriGetExtension "
 $dictToAdd = @{
     hostname = "nu"
     hosttype ="A"
-    hostdst = ""
-    hostvalue = "123.234.212.1"}
+    hostdst = "123.234.212.1"
+    hostvalue = ""}
 $get_Zones = get-Request -Session @Connection -UriGetExtension "pkg.php?xml=bind_zones.xml"
 # ToDo: only get the names from the line
 $($($get_Zones.ParsedHtml.getElementById("mainarea").innerText).split([Environment]::NewLine) | Where-Object {$_}) | Select -Skip 1 | Select -SkipLast 1
