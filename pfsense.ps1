@@ -396,7 +396,6 @@ Post-request -Session @Connection -dictPostData $dictPostData -UriGetExtension "
 
 # ToDo: Delete a entry from a alias
 
-
 # Add Route
 $dictPostData = @{
     network="192.168.210.0"
@@ -410,7 +409,19 @@ $dictPostData = @{
         apply="Apply+Changes"}
 Post-request -Session @Connection -dictPostData $dictPostData -UriGetExtension "system_routes.php" -UriPostExtension "system_routes.php"
 
-# ToDo: Delete a route
+
+# Delete a route
+# get all route's and let the user select the one he want's to delete
+$get_all_routes = get-Request -Session @Connection -UriGetExtension "system_routes.php"
+$all_routes = $($get_all_routes.ParsedHtml.body.getElementsByClassName("table table-striped table-hover table-condensed table-rowdblclickedit") | %{$_.InnerText}).split([Environment]::NewLine) | Where-Object {$_} | Select -Skip 1
+$indexNumber = 0
+$all_routes | %{"Option {0} is {1}" -f $indexNumber,$all_routes[$indexnumber]; $indexNumber++ }
+$route_to_delete = Read-Host -Prompt "Please give number of the route you would like to delete"
+$ID = $($($($get_all_routes.ParsedHtml.body.getElementsByClassName("table table-striped table-hover table-condensed table-rowdblclickedit") | %{$_.innerHTML -split "<TR>"} | select-string -pattern $($($all_routes[$route_to_delete]) -split("\s+"))[0]) -split "<A" | select-string -pattern 'title="Delete route"')  -split ";")[1] -replace "[^0-9]" , ''
+$dictPostData = @{
+        act="del"
+        id=$ID}
+Post-request -Session @Connection -dictPostData $dictPostData -UriGetExtension "system_routes_edit.php" -UriPostExtension "system_routes.php"
 
 # Bind
 # first we need to count the number of acl's that already excist:
