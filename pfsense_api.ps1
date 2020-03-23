@@ -405,6 +405,7 @@ Function addhost_dnsresolver{
     Post-request -Session @Connection -dictPostData $dictPostData -UriGetExtension "services_unbound.php" -UriPostExtension "services_unbound.php"
 }
 
+#pfsense_api -server '' -username '' -Password '' -service dnsresolver -action deletehost host domain
 Function Deletehost_dnsresolver{
     Param
     (
@@ -415,6 +416,46 @@ Function Deletehost_dnsresolver{
     $ID = $($($($($($get_all_resolverhosts.ParsedHtml.body.getElementsByClassName("container static") | %{$_.outerHTML}) -split("<TR")) | Select-String -Pattern "<TD>$Argument1" | Select-String -Pattern "<TD>$Argument2") -split ("<A") | Select-String -Pattern "Edit host override") -split "id=")[1] -replace "[^0-9]" , ''
     $dictPostData = @{
             type="host"
+            act="del"
+            id=$ID}
+    Post-request -Session @Connection -dictPostData $dictPostData -UriGetExtension "services_unbound.php" -UriPostExtension "services_unbound.php"
+    $dictPostData = @{apply="Apply+Changes"}
+    Post-request -Session @Connection -dictPostData $dictPostData -UriGetExtension "services_unbound.php" -UriPostExtension "services_unbound.php"
+}
+
+#pfsense_api -server '' -username '' -Password '' -service dnsresolver -action adddomain domain ipaddress "Description this must be between quotation marks"
+Function adddomain_dnsresolver{
+    Param
+    (
+    [Parameter(Mandatory=$true, Position=0,HelpMessage='Valid/active websession to server')] [PSObject] $Connection,   
+    [Parameter(Mandatory=$true, Position=1,HelpMessage='The Argument you would like to give to the action')] [PSObject] $Argument1,
+    [Parameter(Mandatory=$true, Position=2,HelpMessage='The Argument you would like to give to the action')] [PSObject] $Argument2,
+    [Parameter(Mandatory=$true, Position=3,HelpMessage='The Argument you would like to give to the action')] [PSObject] $Argument3
+    )
+    $dictPostData = @{
+        domain=$Argument1
+        ip=$Argument2
+        tls_hostname=""
+        descr=$Argument3
+        save="Save"
+    }
+    Post-request -Session @Connection -dictPostData $dictPostData -UriGetExtension "services_unbound_domainoverride_edit.php" -UriPostExtension "services_unbound_domainoverride_edit.php"
+    $dictPostData = @{"apply"="Apply Changes"}
+    Post-request -Session @Connection -dictPostData $dictPostData -UriGetExtension "services_unbound.php" -UriPostExtension "services_unbound.php"
+}
+
+#pfsense_api -server '' -username '' -Password '' -service dnsresolver -action deletedomain domain
+Function Deletedomain_dnsresolver{
+    Param
+    (
+    [Parameter(Mandatory=$true, Position=0,HelpMessage='Valid/active websession to server')] [PSObject] $Connection,   
+    [Parameter(Mandatory=$true, Position=1,HelpMessage='The Argument you would like to give to the action')] [PSObject] $Argument1,
+    [Parameter(Mandatory=$true, Position=1,HelpMessage='The Argument you would like to give to the action')] [PSObject] $Argument2
+    )
+    $get_all_resolverdomains = get-Request -Session $Connection -UriGetExtension "services_unbound.php"
+    $ID = $($($($($($get_all_resolverdomains.ParsedHtml.body.getElementsByClassName("container static") | %{$_.outerHTML}) -split("<TR")) | Select-String -Pattern "<TD>$Argument1" | Select-String -Pattern "<TD>$Argument2" ) -split ("<A") | Select-String -Pattern "Domain Override") -split "id=")[1] -replace "[^0-9]" , ''
+    $dictPostData = @{
+            type="doverride"
             act="del"
             id=$ID}
     Post-request -Session @Connection -dictPostData $dictPostData -UriGetExtension "services_unbound.php" -UriPostExtension "services_unbound.php"
@@ -463,7 +504,10 @@ elseif ($service -eq "dnsresolver"){
     elseif ($action -eq "UploadCustom"){UploadCustom_dnsresolver -Connection @Connection -Argument1 $Argument1 }
     elseif ($action -eq "addhost"){addhost_dnsresolver -Connection @Connection -Argument1 $Argument1 -Argument2 $Argument2 -Argument3 $Argument3 -Argument4 $Argument4}
     elseif ($action -eq "Deletehost"){Deletehost_dnsresolver -Connection @Connection -Argument1 $Argument1 -Argument2 $Argument2}
+    elseif ($action -eq "adddomain"){adddomain_dnsresolver -Connection @Connection -Argument1 $Argument1 -Argument2 $Argument2 -Argument3 $Argument3}
+    elseif ($action -eq "deletedomain"){deletedomain_dnsresolver -Connection @Connection -Argument1 $Argument1 -Argument2 $Argument2}
 
+    
 }
 
 if ($Connection){Logout -Connection @Connection}

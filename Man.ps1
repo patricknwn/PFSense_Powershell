@@ -150,6 +150,27 @@ $row.'Help message' = ""
 $row.Example = "pfsense_api -server '' -username '' -Password '' -service dnsresolver -action deletehost localhost localdomain"
 $mandnsresolver.Rows.Add($row)
 
+$row = $mandnsresolver.NewRow()
+$row.Service = "dnsresolver adddomain"
+$row.'Help message' = "add a domain override"
+$row.Example = "pfsense_api -server '' -username '' -Password '' -service dnsresolver -action adddomain domain ipaddress `"Description this must be between quotation marks`""
+$mandnsresolver.Rows.Add($row)
+$row = $mandnsresolver.NewRow()
+$row.Service = ""
+$row.'Help message' = ""
+$row.Example = "pfsense_api -server '' -username '' -Password '' -service dnsresolver -action adddomain localdomain 192.168.0.2 `"this is a test host`""
+$mandnsresolver.Rows.Add($row)
+$row = $mandnsresolver.NewRow()
+$row.Service = "dnsresolver deletedomain"
+$row.'Help message' = "delete a host override"
+$row.Example = "pfsense_api -server '' -username '' -Password '' -service dnsresolver -action deletedomain domain ipaddress"
+$mandnsresolver.Rows.Add($row)
+$row = $mandnsresolver.NewRow()
+$row.Service = ""
+$row.'Help message' = ""
+$row.Example = "pfsense_api -server '' -username '' -Password '' -service dnsresolver -action deletedomain localdomain 192.168.0.2"
+$mandnsresolver.Rows.Add($row)
+
 # pfsense_api -server '' -username '' -Password '' -service Route -action Add Name 192.168.0.2 192.168.0.2 WAN "Description this must be between quotation marks"
 
 
