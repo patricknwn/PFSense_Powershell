@@ -320,7 +320,7 @@ Function delete_Gateway{
     [Parameter(Mandatory=$true, Position=0,HelpMessage='Valid/active websession to server')] [PSObject] $Connection,   
     [Parameter(Mandatory=$true, Position=1,HelpMessage='The Argument you would like to give to the action')] [PSObject] $Argument1)
     $get_all_gateways = get-Request -Session $Connection -UriGetExtension "system_gateways.php"
-    $ID =     $($($get_all_gateways.ParsedHtml.body.getElementsByClassName("table table-striped table-hover table-condensed table-rowdblclickedit") | %{$_.innerHTML -split "<TR"} | select-string -pattern $Argument1 | %{$_ -split "<TD"} | %{$_ -split "<A"} | select-string -pattern 'title="Delete gateway"') -split ";")[1] -replace "[^0-9]" , ''
+    $ID = $($($get_all_gateways.ParsedHtml.body.getElementsByClassName("table table-striped table-hover table-condensed table-rowdblclickedit") | %{$_.innerHTML -split "<TR"} | select-string -pattern $Argument1 | %{$_ -split "<TD"} | %{$_ -split "<A"} | select-string -pattern 'title="Delete gateway"') -split ";")[1] -replace "[^0-9]" , ''
     $dictPostData = @{
             act="del"
             id=$ID}
@@ -380,6 +380,49 @@ Function UploadCustom_dnsresolver{
     Post-request -Session @Connection -dictPostData $dictPostData -UriGetExtension "services_unbound.php" -UriPostExtension "services_unbound.php"
 }
 
+#pfsense_api -server '' -username '' -Password '' -service dnsresolver -action addhost host domain ipaddress "Description this must be between quotation marks"
+Function addhost_dnsresolver{
+    Param
+    (
+    [Parameter(Mandatory=$true, Position=0,HelpMessage='Valid/active websession to server')] [PSObject] $Connection,   
+    [Parameter(Mandatory=$true, Position=1,HelpMessage='The Argument you would like to give to the action')] [PSObject] $Argument1,
+    [Parameter(Mandatory=$true, Position=2,HelpMessage='The Argument you would like to give to the action')] [PSObject] $Argument2,
+    [Parameter(Mandatory=$true, Position=3,HelpMessage='The Argument you would like to give to the action')] [PSObject] $Argument3,
+    [Parameter(Mandatory=$true, Position=4,HelpMessage='The Argument you would like to give to the action')] [PSObject] $Argument4
+    )
+    $dictPostData = @{
+        host=$Argument1
+        domain=$Argument2
+        ip=$Argument3
+        descr=$Argument4
+        aliashost0=""
+        aliasdomain0=""
+        aliasdescription0=""
+        save="Save"
+    }
+    Post-request -Session @Connection -dictPostData $dictPostData -UriGetExtension "services_unbound_host_edit.php" -UriPostExtension "services_unbound_host_edit.php"
+    $dictPostData = @{"apply"="Apply Changes"}
+    Post-request -Session @Connection -dictPostData $dictPostData -UriGetExtension "services_unbound.php" -UriPostExtension "services_unbound.php"
+}
+
+Function Deletehost_dnsresolver{
+    Param
+    (
+    [Parameter(Mandatory=$true, Position=0,HelpMessage='Valid/active websession to server')] [PSObject] $Connection,   
+    [Parameter(Mandatory=$true, Position=1,HelpMessage='The Argument you would like to give to the action')] [PSObject] $Argument1,
+    [Parameter(Mandatory=$true, Position=2,HelpMessage='The Argument you would like to give to the action')] [PSObject] $Argument2)
+    $get_all_resolverhosts = get-Request -Session $Connection -UriGetExtension "services_unbound.php"
+    $ID = $($($($($($get_all_resolverhosts.ParsedHtml.body.getElementsByClassName("container static") | %{$_.outerHTML}) -split("<TR")) | Select-String -Pattern "<TD>$Argument1" | Select-String -Pattern "<TD>$Argument2") -split ("<A") | Select-String -Pattern "Edit host override") -split "id=")[1] -replace "[^0-9]" , ''
+    $dictPostData = @{
+            type="host"
+            act="del"
+            id=$ID}
+    Post-request -Session @Connection -dictPostData $dictPostData -UriGetExtension "services_unbound.php" -UriPostExtension "services_unbound.php"
+    $dictPostData = @{apply="Apply+Changes"}
+    Post-request -Session @Connection -dictPostData $dictPostData -UriGetExtension "services_unbound.php" -UriPostExtension "services_unbound.php"
+}
+
+
 $DefaulkCred  = New-Object System.Management.Automation.PSCredential ($Username, $(ConvertTo-SecureString -string $password -AsPlainText -Force))
 if (-not $service -or $service -eq "Help" -or $service -eq "H"){$HelpMessageheader
     $manall
@@ -418,8 +461,10 @@ elseif ($service -eq "dnsresolver"){
     if (-not $Action -or $action -eq "Help" -or $Action -eq "H"){$mandnsresolver}
     elseif ($action -eq "print"){print_dnsresolver -Connection @Connection}
     elseif ($action -eq "UploadCustom"){UploadCustom_dnsresolver -Connection @Connection -Argument1 $Argument1 }
-}
+    elseif ($action -eq "addhost"){addhost_dnsresolver -Connection @Connection -Argument1 $Argument1 -Argument2 $Argument2 -Argument3 $Argument3 -Argument4 $Argument4}
+    elseif ($action -eq "Deletehost"){Deletehost_dnsresolver -Connection @Connection -Argument1 $Argument1 -Argument2 $Argument2}
 
+}
 
 if ($Connection){Logout -Connection @Connection}
 

@@ -116,12 +116,12 @@ $row.Example = ""
 $mandnsresolver.Rows.Add($row)
 $row = $mandnsresolver.NewRow()
 $row.Service = "dnsresolver print"
-$row.'Help message' = "to print the dnsresolver"
+$row.'Help message' = "print the dnsresolver"
 $row.Example = "pfsense_api -server '' -username '' -Password '' -service dnsresolver -action print"
 $mandnsresolver.Rows.Add($row)
 $row = $mandnsresolver.NewRow()
 $row.Service = "dnsresolver uploadcostum"
-$row.'Help message' = "to upload a custom config to the dnsresolver"
+$row.'Help message' = "upload a custom config to the dnsresolver"
 $row.Example = "pfsense_api -server '' -username '' -Password '' -service dnsresolver -action UploadCustom `"Custom File`""
 $mandnsresolver.Rows.Add($row)
 $row = $mandnsresolver.NewRow()
@@ -129,6 +129,27 @@ $row.Service = ""
 $row.'Help message' = ""
 $row.Example = "pfsense_api -server '' -username '' -Password '' -service dnsresolver -action UploadCustom CustomOptions.txt"
 $mandnsresolver.Rows.Add($row)
+$row = $mandnsresolver.NewRow()
+$row.Service = "dnsresolver addhost"
+$row.'Help message' = "add a host override"
+$row.Example = "pfsense_api -server '' -username '' -Password '' -service dnsresolver -action addhost host domain ipaddress `"Description this must be between quotation marks`""
+$mandnsresolver.Rows.Add($row)
+$row = $mandnsresolver.NewRow()
+$row.Service = ""
+$row.'Help message' = ""
+$row.Example = "pfsense_api -server '' -username '' -Password '' -service dnsresolver -action addhost localhost localdomain 192.168.0.2 `"this is a test host`""
+$mandnsresolver.Rows.Add($row)
+$row = $mandnsresolver.NewRow()
+$row.Service = "dnsresolver deletehost"
+$row.'Help message' = "delete a host override"
+$row.Example = "pfsense_api -server '' -username '' -Password '' -service dnsresolver -action deletehost host domain"
+$mandnsresolver.Rows.Add($row)
+$row = $mandnsresolver.NewRow()
+$row.Service = ""
+$row.'Help message' = ""
+$row.Example = "pfsense_api -server '' -username '' -Password '' -service dnsresolver -action deletehost localhost localdomain"
+$mandnsresolver.Rows.Add($row)
+
 # pfsense_api -server '' -username '' -Password '' -service Route -action Add Name 192.168.0.2 192.168.0.2 WAN "Description this must be between quotation marks"
 
 
