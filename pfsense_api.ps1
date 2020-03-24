@@ -17,7 +17,9 @@
     [Switch] $NoTLS
 )
 
+
 . .\man.ps1
+
 
 Function test-connection{
     <#
@@ -43,6 +45,7 @@ Function test-connection{
     }
 
 }
+
 
 Function Connect-pfSense{
     <#
@@ -82,6 +85,7 @@ Function Connect-pfSense{
         'dictOptions' = $dictOptions
     }
 }
+
 
 Function Post-request{
     <#
@@ -174,6 +178,7 @@ Function Post-request{
     if ($error_alert){Write-Warning $error_alert -WarningAction Inquire}
 }
 
+
 Function Get-Request{
     <#
     This Function does a get request on the pfsense.
@@ -195,11 +200,13 @@ Function Get-Request{
     return $request
 }
 
+
 Function Logout {
     Param([Parameter(Mandatory=$true, Position=0,HelpMessage='Valid/active websession to server')] [PSObject]$Connection)
     $dictPostData = @{logout=""}
     Post-request -Session @Connection -dictPostData $dictPostData -UriGetExtension "index.php" -UriPostExtension "index.php"
 }
+
 
 # pfsense_api -server '' -username '' -Password '' -service Route -action print                                                                                          
 Function Printe_route{
@@ -211,6 +218,7 @@ Function Printe_route{
     write-host "Know routes are:"
     $all_routes | %{"{0}" -f $all_routes[$indexnumber]; $indexNumber++ } 
 }
+
 
 # pfsense_api -server '' -username '' -Password '' -service Route -action Add 192.168.0.0 24 WAN_DHCP "Description this must be between quotation marks"
 Function Add_route{
@@ -232,6 +240,7 @@ Function Add_route{
     Post-request -Session @Connection -dictPostData $dictPostData -UriGetExtension "system_routes.php" -UriPostExtension "system_routes.php"
 }
 
+
 #pfsense_api -server '' -username '' -Password '' -service Route -action Delete 192.168.0.0 24 WAN_DHCP 
 Function delete_route{
     Param
@@ -244,12 +253,13 @@ Function delete_route{
     $route_to_delete = "{0}/{1} {2}" -f $Argument1,$Argument2,$Argument3
     try{
     $ID = $($($($get_all_routes.ParsedHtml.body.getElementsByClassName("table table-striped table-hover table-condensed table-rowdblclickedit") | %{$_.innerHTML -split "<TR>"} | select-string -pattern $($($route_to_delete) -split("\s+"))[0]) -split "<A" | select-string -pattern 'title="Delete route"')  -split ";")[1] -replace "[^0-9]" , ''
-    }catch{write-warning "Did not find the combination you enterd"}
+    }catch{write-warning "Did not find the combination you entered"}
     $dictPostData = @{
             act="del"
             id=$ID}
     Post-request -Session @Connection -dictPostData $dictPostData -UriGetExtension "system_routes_edit.php" -UriPostExtension "system_routes.php"
 }
+
 
 # pfsense_api -server '' -username '' -Password '' -service interface -action print
 function print_interface{
@@ -260,6 +270,7 @@ function print_interface{
     $all_interfaces | %{"{0}" -f $all_interfaces[$indexnumber]; $indexNumber++ }
 }
 
+
 # pfsense_api -server '' -username '' -Password '' -service gateway -action print
 function print_Gateway{
     Param([Parameter(Mandatory=$true, Position=0,HelpMessage='Valid/active websession to server')][PSObject]$Connection) 
@@ -268,6 +279,7 @@ function print_Gateway{
     $indexNumber = 0
     $all_gateways | %{"{0}" -f $all_gateways[$indexnumber]; $indexNumber++ }
 }
+
 
 # pfsense_api -server '' -username '' -Password '' -service Route -action Add Name 192.168.0.2 192.168.0.2 WAN "Description this must be between quotation marks"
 function add_Gateway{
@@ -308,6 +320,7 @@ function add_Gateway{
     Post-request -Session @Connection -dictPostData $dictPostData -UriGetExtension "system_gateways.php" -UriPostExtension "system_gateways.php"
 }
 
+
 # pfsense_api -server '' -username '' -Password '' -service Gateway -action delete new_gateway
 Function delete_Gateway{
     Param
@@ -317,7 +330,7 @@ Function delete_Gateway{
     $get_all_gateways = get-Request -Session $Connection -UriGetExtension "system_gateways.php"
     try{
     $ID = $($($get_all_gateways.ParsedHtml.body.getElementsByClassName("table table-striped table-hover table-condensed table-rowdblclickedit") | %{$_.innerHTML -split "<TR"} | select-string -pattern $Argument1 | %{$_ -split "<TD"} | %{$_ -split "<A"} | select-string -pattern 'title="Delete gateway"') -split ";")[1] -replace "[^0-9]" , ''
-    }catch{write-warning "Did not find the combination you enterd"}
+    }catch{write-warning "Did not find the combination you entered"}
     $dictPostData = @{
             act="del"
             id=$ID}
@@ -326,6 +339,7 @@ Function delete_Gateway{
         apply="Apply+Changes"}
     Post-request -Session @Connection -dictPostData $dictPostData -UriGetExtension "system_gateways.php" -UriPostExtension "system_gateways.php"
 }
+
 
 #pfsense_api -server '' -username '' -Password '' -service dnsresolver -action print
 Function print_dnsresolver{    
@@ -337,7 +351,6 @@ Function print_dnsresolver{
     $($get_all_dnsresolver.ParsedHtml.getElementById("outgoing_interface[]")) | %{if($_.selected) {$OutgoingNetworkInterfaces += $_.text}}
     $Customoptions = ""
     $Customoptions += $($get_all_dnsresolver.ParsedHtml.getElementById("custom_options")).value
-
     $HostOverrides = ""
     $HostOverrides += $($($($($get_all_dnsresolver.ParsedHtml.body.getElementsByClassName("container static") | %{$_.InnerText}) -split("`n`r")) | Select-String -Pattern 'Host Overrides') -split ("hostDescriptionActions"))[1]
     $DomainOverrides = ""
@@ -345,6 +358,7 @@ Function print_dnsresolver{
 
     "Selected network interface are:`n`r{0}`n`r`n`rSelected outgoing interfaces are:`n`r{1}`n`r`n`rCostum options are:`n`r{2}`n`r`n`rHost override's are:{3}`n`r`n`rDomain override's are:{4}" -f $NetworkInterfaces,$OutgoingNetworkInterfaces,$Customoptions,$HostOverrides,$DomainOverrides
 }
+
 
 #pfsense_api -server '' -username '' -Password '' -service dnsresolver -action UploadCustom "Custom File" 
 Function UploadCustom_dnsresolver{
@@ -374,6 +388,7 @@ Function UploadCustom_dnsresolver{
     Post-request -Session @Connection -dictPostData $dictPostData -UriGetExtension "services_unbound.php" -UriPostExtension "services_unbound.php"
 }
 
+
 #pfsense_api -server '' -username '' -Password '' -service dnsresolver -action addhost host domain ipaddress "Description this must be between quotation marks"
 Function addhost_dnsresolver{
     Param
@@ -399,6 +414,7 @@ Function addhost_dnsresolver{
     Post-request -Session @Connection -dictPostData $dictPostData -UriGetExtension "services_unbound.php" -UriPostExtension "services_unbound.php"
 }
 
+
 #pfsense_api -server '' -username '' -Password '' -service dnsresolver -action deletehost host domain
 Function Deletehost_dnsresolver{
     Param
@@ -408,8 +424,8 @@ Function Deletehost_dnsresolver{
     [Parameter(Mandatory=$true, Position=2,HelpMessage='The Argument you would like to give to the action')] [PSObject] $Argument2)
     $get_all_resolverhosts = get-Request -Session $Connection -UriGetExtension "services_unbound.php"
     try{
-    $ID = $($($($($($get_all_resolverhosts.ParsedHtml.body.getElementsByClassName("container static") | %{$_.outerHTML}) -split("<TR")) | Select-String -Pattern "<TD>$Argument1" | Select-String -Pattern "<TD>$Argument2") -split ("<A") | Select-String -Pattern "Edit host override") -split "id=")[1] -replace "[^0-9]" , ''
-    }catch{write-warning "Did not find the combination you enterd"}
+    $ID = $($($($($($($get_all_resolverhosts.ParsedHtml.body.getElementsByClassName("container static") | %{$_.outerHTML}) -split("<TR")) | Select-String -Pattern "<TD>$Argument1" | Select-String -Pattern "<TD>$Argument2") -split ("<A") | Select-String -Pattern "Edit host override") -split "id=")[1]) -split(";")[0] -replace "[^0-9]" , ''
+    }catch{write-warning "Did not find the combination you entered"}
     $dictPostData = @{
             type="host"
             act="del"
@@ -418,6 +434,7 @@ Function Deletehost_dnsresolver{
     $dictPostData = @{apply="Apply+Changes"}
     Post-request -Session @Connection -dictPostData $dictPostData -UriGetExtension "services_unbound.php" -UriPostExtension "services_unbound.php"
 }
+
 
 #pfsense_api -server '' -username '' -Password '' -service dnsresolver -action adddomain domain ipaddress "Description this must be between quotation marks"
 Function adddomain_dnsresolver{
@@ -440,6 +457,7 @@ Function adddomain_dnsresolver{
     Post-request -Session @Connection -dictPostData $dictPostData -UriGetExtension "services_unbound.php" -UriPostExtension "services_unbound.php"
 }
 
+
 #pfsense_api -server '' -username '' -Password '' -service dnsresolver -action deletedomain domain
 Function Deletedomain_dnsresolver{
     Param(
@@ -447,8 +465,8 @@ Function Deletedomain_dnsresolver{
     [Parameter(Mandatory=$true, Position=1,HelpMessage='The Argument you would like to give to the action')] [PSObject] $Argument1)
     $get_all_resolverdomains = get-Request -Session $Connection -UriGetExtension "services_unbound.php"
     try{
-    $ID = $($($($($($get_all_resolverdomains.ParsedHtml.body.getElementsByClassName("container static") | %{$_.outerHTML}) -split("<TR")) | Select-String -Pattern "<TD>$Argument1") -split ("<A") | Select-String -Pattern "Domain Override") -split "id=")[1] -replace "[^0-9]" , ''
-    }catch{write-warning "Did not find the combination you enterd"}
+    $ID = $($($($($($($get_all_resolverdomains.ParsedHtml.body.getElementsByClassName("container static") | %{$_.outerHTML}) -split("<TR")) | Select-String -Pattern "<TD>$Argument1") -split ("<A") | Select-String -Pattern "Domain Override") -split "id=")[1]) -split(";")-replace "[^0-9]" , ''
+    }catch{write-warning "Did not find the combination you entered"}
     $dictPostData = @{
             type="doverride"
             act="del"
@@ -458,6 +476,7 @@ Function Deletedomain_dnsresolver{
     Post-request -Session @Connection -dictPostData $dictPostData -UriGetExtension "services_unbound.php" -UriPostExtension "services_unbound.php"
 }
 
+
 #pfsense_api -server '' -username '' -Password '' -service portfwd -action print
 Function print_portfwd{
     Param([Parameter(Mandatory=$true, Position=0,HelpMessage='Valid/active websession to server')][PSObject]$Connection) 
@@ -466,6 +485,7 @@ Function print_portfwd{
     $indexNumber = 0
     $all_portfwd | %{"{0}" -f $all_portfwd[$indexnumber]; $indexNumber++ }
 }
+
 
 #pfsense_api -server '' -username '' -Password '' -service portfwd -action add Interface Protocol Dest_Address Dest_Ports NAT_IP NAT_Ports `"Description this must be between quotation marks`""
 Function add_portfwd{
@@ -506,6 +526,7 @@ Function add_portfwd{
 
 }
 
+
 #pfsense_api -server '' -username '' -Password '' -service portfwd -action delete Dest_Address Dest_Ports NAT_IP NAT_Ports
 Function Delete_portfwd{
     Param(
@@ -516,8 +537,8 @@ Function Delete_portfwd{
     [Parameter(Mandatory=$true, Position=4,HelpMessage='The Argument you would like to give to the action')] [PSObject] $Argument4)
     $get_all_Portfwd = get-Request -Session @Connection -UriGetExtension "firewall_nat.php"
     try{
-    $ID = $($($($($get_all_Portfwd.ParsedHtml.getElementById("ruletable")| %{$_.outerHTML}) -split("<TR") | Select-String -Pattern "<TD>$Argument1" | Select-String -Pattern "<TD>$Argument2" | Select-String -Pattern "<TD>$Argument3" | Select-String -Pattern "<TD>$Argument4" ) -split ("<A") | Select-String -Pattern "firewall_nat_edit") -split "id=")[1] -replace "[^0-9]" , ''
-    }catch{write-warning "Did not find the combination you enterd"}
+    $ID = $($($($($($get_all_Portfwd.ParsedHtml.getElementById("ruletable")| %{$_.outerHTML}) -split("<TR") | Select-String -Pattern "<TD>$Argument1" | Select-String -Pattern "<TD>$Argument2" | Select-String -Pattern "<TD>$Argument3" | Select-String -Pattern "<TD>$Argument4" ) -split ("<A") | Select-String -Pattern "firewall_nat_edit") -split "id=")[1]) -split (";") -replace "[^0-9]" , ''
+    }catch{write-warning "Did not find the combination you entered"}
     $dictPostData = @{
         act="del"
         id=$ID}
@@ -527,10 +548,107 @@ Function Delete_portfwd{
 }
 
 
+#pfsense_api -server '' -username '' -Password '' -service Alias -action print
+Function print_Alias{
+    Param([Parameter(Mandatory=$true, Position=0,HelpMessage='Valid/active websession to server')][PSObject]$Connection) 
+    $get_all_IPAlias = get-Request -Session @Connection -UriGetExtension "firewall_aliases.php?tab=ip"
+    $all_IPAlias = $(@($($get_all_IPAlias.ParsedHtml.body.getElementsByClassName("table-responsive") | %{$_.InnerText}) -split([Environment]::NewLine) | Where-Object {$_} | Select -Skip 1)) -join "`n`r"
+    $get_all_PortAlias = get-Request -Session @Connection -UriGetExtension "firewall_aliases.php?tab=port"
+    $all_PortAlias = $(@($($get_all_PortAlias.ParsedHtml.body.getElementsByClassName("table-responsive") | %{$_.InnerText}) -split([Environment]::NewLine) | Where-Object {$_} | Select -Skip 1)) -join "`n`r"
+    $get_all_URLAlias = get-Request -Session @Connection -UriGetExtension "firewall_aliases.php?tab=url"
+    $all_URLAlias = $(@($($get_all_URLAlias.ParsedHtml.body.getElementsByClassName("table-responsive") | %{$_.InnerText}) -split([Environment]::NewLine) | Where-Object {$_} | Select -Skip 1)) -join "`n`r"
+    "Firewall Aliases IP:`n`r{0}`n`r`n`nFirewall Aliases Ports:`n`r{1}`n`r`n`rFirewall Aliases URLs`n`r{2}" -f $all_IPAlias,$all_PortAlias,$all_URLAlias
+}
+
+
+#pfsense_api -server '' -username '' -Password '' -service Alias -action SpecificPrint name
+Function SpecificPrint_Alias{
+    Param([Parameter(Mandatory=$true, Position=0,HelpMessage='Valid/active websession to server')][PSObject]$Connection,
+    [Parameter(Mandatory=$true, Position=1,HelpMessage='The Argument you would like to give to the action')] [PSObject] $Argument1)
+    $get_all_alias = get-Request -Session @Connection -UriGetExtension "firewall_aliases.php?tab=all"
+    try{$ID = $($($($($($($get_all_alias.ParsedHtml.body.getElementsByClassName("table table-striped table-hover table-condensed sortable-theme-bootstrap")| %{$_.outerHTML}) -split("<TR") | Select-String -Pattern $Argument1) -split("<TD"))[1]) -split "id=")[1] -split(";"))[0] -replace "[^0-9]" , ''}
+    catch{write-warning "Did not find the Alias you entered"}
+    $get_alias = get-Request -Session @Connection -UriGetExtension "firewall_aliases_edit.php?id=$ID"
+    $indexNumber = 0
+    $($get_alias.ParsedHtml.getElementById("type")) | %{if($_.selected) {$type_value = $_.value()} }
+    if($type_value -eq "network"){
+        while($True){
+            if(-not $($get_alias.ParsedHtml.getElementById("address$indexnumber")).value){break}
+            "{0} {1} {2}" -f $($get_alias.ParsedHtml.getElementById("address$indexnumber").value),$($get_alias.ParsedHtml.getElementById("address_subnet$indexnumber").value),$($get_alias.ParsedHtml.getElementById("detail$indexnumber").value)
+            $indexNumber++}}
+    else{
+        while($True){
+            if(-not $($get_alias.ParsedHtml.getElementById("address$indexnumber")).value){break}
+            "{0} {1}" -f $($get_alias.ParsedHtml.getElementById("address$indexnumber").value),$($get_alias.ParsedHtml.getElementById("detail$indexnumber").value)
+            $indexNumber++}}
+}
+
+
+#pfsense_api -server '' -username '' -Password '' -service Alias -action add Type Name `"Description this must be between quotation marks`" Address Subnet(CIDR method)
+Function add_Alias{
+    Param(
+    [Parameter(Mandatory=$true, Position=0,HelpMessage='Valid/active websession to server')] [PSObject] $Connection,   
+    [Parameter(Mandatory=$true, Position=1,HelpMessage='The Argument you would like to give to the action')] [PSObject] $Argument1,
+    [Parameter(Mandatory=$true, Position=2,HelpMessage='The Argument you would like to give to the action')] [PSObject] $Argument2,
+    [Parameter(Mandatory=$true, Position=3,HelpMessage='The Argument you would like to give to the action')] [PSObject] $Argument3,
+    [Parameter(Mandatory=$true, Position=4,HelpMessage='The Argument you would like to give to the action')] [PSObject] $Argument4,
+    [Parameter(Mandatory=$true, Position=5,HelpMessage='The Argument you would like to give to the action')] [PSObject] $Argument5)
+    if($Argument1 -eq "Host"){$dictPostData = @{
+        name=$Argument2
+        descr=$Argument3
+        type="Host"
+        address0=$Argument4
+        detail0=""
+        tab="ip"
+        origname=""
+        save="Save"}}
+    if($Argument1 -eq "Port"){$dictPostData = @{
+        name=$Argument2
+        descr=$Argument3
+        type="Port"
+        address0=$Argument4
+        detail0=""
+        tab="ip"
+        origname=""
+        save="Save"}}
+    if($Argument1 -eq "network"){$dictPostData = @{
+        name=$Argument2
+        descr=$Argument3
+        type="network"
+        address0=$Argument4
+        address_subnet0=$Argument5
+        detail0=""
+        tab="ip"
+        origname=""
+        save="Save"}}
+    if($Argument1 -eq "url"){$dictPostData = @{
+        name=$Argument2
+        descr=$Argument3
+        type="url"
+        address0=$Argument4
+        address_subnet0=$Argument5
+        detail0=""
+        tab="ip"
+        origname=""
+        save="Save"}}
+    Post-request -Session @Connection -dictPostData $dictPostData -UriGetExtension "firewall_aliases_edit.php?tab=ip.php" -UriPostExtension "firewall_aliases_edit.php?tab=ip.php"
+    $dictPostData = @{"apply"="Apply Changes"}
+    Post-request -Session @Connection -dictPostData $dictPostData -UriGetExtension "firewall_aliases.php?tab=ip.php" -UriPostExtension "firewall_aliases.php?tab=ip.php"
+}
+
+
 $DefaulkCred  = New-Object System.Management.Automation.PSCredential ($Username, $(ConvertTo-SecureString -string $password -AsPlainText -Force))
 if (-not $service -or $service -eq "Help" -or $service -eq "H"){$HelpMessageheader
     $manall
     exit}
+elseif (-not $action -or $action -eq "Help" -or $action -eq "H"){
+    if($service -eq "route"){$manroute ; exit}
+    elseif($service -eq "Interface"){$manint ; exit}
+    elseif($service -eq "Gateway"){$manint ; exit}
+    elseif($service -eq "dnsresolver"){$manint ; exit}
+    elseif($service -eq "portfwd"){$manint ; exit}
+    elseif($service -eq "Alias"){$manint ; exit}
+    }
 elseif ( -not $NoTest -AND -not $NoTLS){test-connection -Server $Server ; $Connection = Connect-pfSense -Server $Server -Credentials $DefaulkCred} # has test and tls
 elseif ( -not $Notest){test-connection -Server $Server -NoTLS ;$Connection = Connect-pfSense -Server $Server -Credentials $DefaulkCred -NoTLS} #has test and no tls
 elseif ( -not $NoTLS){$Connection = Connect-pfSense -Server $Server -Credentials $DefaulkCred} #has no test and tls
@@ -542,28 +660,24 @@ try {
 }catch{}
 
 if ($service -eq "route"){
-    if (-not $Action -or $action -eq "Help" -or $Action -eq "H"){$manroute}
-    elseif ($action -eq "print"){Printe_route -Connection @Connection}
+    if ($action -eq "print"){Printe_route -Connection @Connection}
     elseif ($action -eq "add"){add_route -Connection @Connection -Argument1 $Argument1 -Argument2 $Argument2 -Argument3 $Argument3 -argument4 $Argument4}
     elseif ($action -eq "delete"){delete_route -Connection @Connection -Argument1 $Argument1 -Argument2 $Argument2 -Argument3 $Argument3}  
 }
 
 elseif ($service -eq "Interface"){
-    if (-not $Action -or $action -eq "Help" -or $Action -eq "H"){$manint}
-    elseif ($action -eq "print"){print_interface -Connection @Connection}
+    if ($action -eq "print"){print_interface -Connection @Connection}
 }
 
 elseif ($service -eq "Gateway"){
-    if (-not $Action -or $action -eq "Help" -or $Action -eq "H"){$manGateway}
-    elseif ($action -eq "print"){print_Gateway -Connection @Connection}
+    if ($action -eq "print"){print_Gateway -Connection @Connection}
     elseif ($action -eq "add"){add_Gateway -Connection @Connection -Argument1 $Argument1 -Argument2 $Argument2 -Argument3 $Argument3 -argument4 $Argument4 -argument5 $Argument5}
     elseif ($action -eq "delete"){delete_Gateway -Connection @Connection -Argument1 $Argument1}  
 
 }
 
 elseif ($service -eq "dnsresolver"){
-    if (-not $Action -or $action -eq "Help" -or $Action -eq "H"){$mandnsresolver}
-    elseif ($action -eq "print"){print_dnsresolver -Connection @Connection}
+    if ($action -eq "print"){print_dnsresolver -Connection @Connection}
     elseif ($action -eq "UploadCustom"){UploadCustom_dnsresolver -Connection @Connection -Argument1 $Argument1 }
     elseif ($action -eq "addhost"){addhost_dnsresolver -Connection @Connection -Argument1 $Argument1 -Argument2 $Argument2 -Argument3 $Argument3 -Argument4 $Argument4}
     elseif ($action -eq "Deletehost"){Deletehost_dnsresolver -Connection @Connection -Argument1 $Argument1 -Argument2 $Argument2}
@@ -572,15 +686,17 @@ elseif ($service -eq "dnsresolver"){
 }
 
 elseif ($service -eq "portfwd"){
-    if (-not $Action -or $action -eq "Help" -or $Action -eq "H"){$manportfwd}
-    elseif ($action -eq "print"){print_portfwd -Connection @Connection}
+    if ($action -eq "print"){print_portfwd -Connection @Connection}
     elseif ($action -eq "Add"){add_portfwd -Connection @Connection -Argument1 $Argument1 -Argument2 $Argument2 -Argument3 $Argument3 -argument4 $Argument4 -argument5 $Argument5 -Argument6 $Argument6 -Argument7 $Argument7}
     elseif ($action -eq "Delete"){Delete_portfwd -Connection @Connection -Argument1 $Argument1 -Argument2 $Argument2 -Argument3 $Argument3 -argument4 $Argument4}
 }
 
+elseif ($service -eq "Alias"){
+    if ($action -eq "print"){print_Alias -Connection @Connection}
+    elseif ($action -eq "SpecificPrint"){SpecificPrint_Alias -Connection @Connection -Argument1 $Argument1}
+    elseif ($action -eq "add"){add_Alias -Connection @Connection -Argument1 $Argument1 -Argument2 $Argument2 -Argument3 $Argument3 -argument4 $Argument4 -argument5 $Argument5}
 
-
-
+}
 
 if ($Connection){Logout -Connection @Connection}
 

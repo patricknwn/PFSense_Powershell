@@ -232,5 +232,62 @@ $row.'Help message' = ""
 $row.Example = "pfsense_api -server '' -username '' -Password '' -service portfwd -action delete 192.168.0.2 8443 10.0.0.1 443"
 $manportfwd.Rows.Add($row)
 
+$ManAlias = New-Object System.Data.DataTable
+$ManAlias.Columns.Add("Service","string") | Out-Null
+$ManAlias.Columns.Add("Action","string") | Out-Null
+$ManAlias.Columns.Add("Help message","string") | Out-Null
+$ManAlias.Columns.Add("Example","string") | Out-Null
+$row = $ManAlias.NewRow()
+$row.Service = "Alias"
+$row.Action = ""
+$row.'Help message' = "To manage aliases on the pfsense"
+$row.Example = ""
+$ManAlias.Rows.Add($row)
+$row = $ManAlias.NewRow()
+$row.Service = "Alias"
+$row.Action = "Print"
+$row.'Help message' = "Print the aliases"
+$row.Example = "pfsense_api -server '' -username '' -Password '' -service Alias -action print"
+$ManAlias.Rows.Add($row)
+$row = $ManAlias.NewRow()
+$row.Service = "Alias"
+$row.Action = "SpecificPrint"
+$row.'Help message' = "Print a specific aliase"
+$row.Example = "pfsense_api -server '' -username '' -Password '' -service Alias -action SpecificPrint name"
+$ManAlias.Rows.Add($row)
+$row = $ManAlias.NewRow()
+$row.Service = "Alias"
+$row.Action = "Add"
+$row.'Help message' = "Add a new aliases"
+$row.Example = "pfsense_api -server '' -username '' -Password '' -service Alias -action add Type Name `"Description this must be between quotation marks`" Address Subnet(CIDR method)"
+$ManAlias.Rows.Add($row)
+$row = $ManAlias.NewRow()
+$row.Service = "Alias"
+$row.Action = ""
+$row.'Help message' = ""
+$row.Example = "pfsense_api -server '' -username '' -Password '' -service Alias -action add Network newNetwork_alias `"This is a network alias`" 192.168.0.0 24"
+$ManAlias.Rows.Add($row)
+$row = $ManAlias.NewRow()
+$row.Service = "Alias"
+$row.Action = ""
+$row.'Help message' = ""
+$row.Example = "pfsense_api -server '' -username '' -Password '' -service Alias -action add Host newHost_alias `"This is a Host alias`" 192.168.0.1"
+$ManAlias.Rows.Add($row)
+$row = $ManAlias.NewRow()
+$row.Service = "Alias"
+$row.Action = ""
+$row.'Help message' = ""
+$row.Example = "pfsense_api -server '' -username '' -Password '' -service Alias -action add Port newPort_alias `"This is a Port alias`" 443"
+$ManAlias.Rows.Add($row)
+$row = $ManAlias.NewRow()
+$row.Service = "Alias"
+$row.Action = ""
+$row.'Help message' = ""
+$row.Example = "pfsense_api -server '' -username '' -Password '' -service Alias -action add url newurl_alias `"This is a url alias`" url"
+$ManAlias.Rows.Add($row)
 
-$manall = $man + $newline + $manroute + $newline + $manint + $newline + $manGateway + $newline + $mandnsresolver + $newline + $manportfwd + $newline
+
+
+
+
+$manall = $man + $newline + $manroute + $newline + $manint + $newline + $manGateway + $newline + $mandnsresolver + $newline + $manportfwd + $newline + $ManAlias + $newline
