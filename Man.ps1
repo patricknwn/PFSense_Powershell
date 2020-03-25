@@ -1,4 +1,7 @@
-﻿$HelpMessageheader = "The use of this script is `"pfsense_api -server '' -username '' -Password '' -service '' -action '' argument1 argument2 argument3 argument4 argument5 -NoTest -NoTLS'`"
+﻿$HelpMessageheader = "The use of this script is `"pfsense_api -server '' -username '' -Password '' -service '' -action '' argument1 argument2 argument3 argument4 argument5 -NoTest -NoTLS
+-NoTLS switch is used to set the connection protocol to http, default is https.
+-NoTest switch is used to not test if the pfsense is online.
+This script is tested on PFSense 2.4.4-RELEASE-p3
 the service`s suported are:"
 $man = New-Object System.Data.DataTable
 $man.Columns.Add("Service","string") | Out-Null
@@ -251,7 +254,7 @@ $row.Example = "pfsense_api -server '' -username '' -Password '' -service Alias 
 $ManAlias.Rows.Add($row)
 $row = $ManAlias.NewRow()
 $row.Service = "Alias"
-$row.Action = "SpecificPrint"
+$row.Action = "PrintSpecific"
 $row.'Help message' = "Print a specific aliase"
 $row.Example = "pfsense_api -server '' -username '' -Password '' -service Alias -action SpecificPrint name"
 $ManAlias.Rows.Add($row)
@@ -262,32 +265,64 @@ $row.'Help message' = "Add a new aliases"
 $row.Example = "pfsense_api -server '' -username '' -Password '' -service Alias -action add Type Name `"Description this must be between quotation marks`" Address Subnet(CIDR method)"
 $ManAlias.Rows.Add($row)
 $row = $ManAlias.NewRow()
-$row.Service = "Alias"
+$row.Service = ""
 $row.Action = ""
 $row.'Help message' = ""
 $row.Example = "pfsense_api -server '' -username '' -Password '' -service Alias -action add Network newNetwork_alias `"This is a network alias`" 192.168.0.0 24"
 $ManAlias.Rows.Add($row)
 $row = $ManAlias.NewRow()
-$row.Service = "Alias"
+$row.Service = ""
 $row.Action = ""
 $row.'Help message' = ""
 $row.Example = "pfsense_api -server '' -username '' -Password '' -service Alias -action add Host newHost_alias `"This is a Host alias`" 192.168.0.1"
 $ManAlias.Rows.Add($row)
 $row = $ManAlias.NewRow()
-$row.Service = "Alias"
+$row.Service = ""
 $row.Action = ""
 $row.'Help message' = ""
 $row.Example = "pfsense_api -server '' -username '' -Password '' -service Alias -action add Port newPort_alias `"This is a Port alias`" 443"
 $ManAlias.Rows.Add($row)
 $row = $ManAlias.NewRow()
-$row.Service = "Alias"
+$row.Service = ""
 $row.Action = ""
 $row.'Help message' = ""
 $row.Example = "pfsense_api -server '' -username '' -Password '' -service Alias -action add url newurl_alias `"This is a url alias`" url"
 $ManAlias.Rows.Add($row)
-
-
-
+$row = $ManAlias.NewRow()
+$row.Service = "Alias"
+$row.Action = "delete"
+$row.'Help message' = "delete a aliase"
+$row.Example = "pfsense_api -server '' -username '' -Password '' -service Alias -action delete name"
+$row = $ManAlias.NewRow()
+$row.Service = ""
+$row.Action = ""
+$row.'Help message' = ""
+$row.Example = "pfsense_api -server '' -username '' -Password '' -service Alias -action delete newurl_alias"
+$ManAlias.Rows.Add($row)
+$row = $ManAlias.NewRow()
+$row.Service = "Alias"
+$row.Action = "addvalue"
+$row.'Help message' = "add a value to a Alias"
+$row.Example = "pfsense_api -server '' -username '' -Password '' -service Alias -action addvalue name `"Description this must be between quotation marks`" Address Subnet(CIDR method) 'Subnet is only necessary if you add to a network alias'"
+$ManAlias.Rows.Add($row)
+$row = $ManAlias.NewRow()
+$row.Service = ""
+$row.Action = ""
+$row.'Help message' = ""
+$row.Example = "pfsense_api -server '' -username '' -Password '' -service Alias -action addvalue newNetwork_alias `"new value`" 192.168.1.0 24"
+$ManAlias.Rows.Add($row)
+$row = $ManAlias.NewRow()
+$row.Service = ""
+$row.Action = ""
+$row.'Help message' = ""
+$row.Example = "pfsense_api -server '' -username '' -Password '' -service Alias -action addvalue newHost_alias `"new value`" 192.168.1.0"
+$ManAlias.Rows.Add($row)
+$row = $ManAlias.NewRow()
+$row.Service = "Alias"
+$row.Action = "deletevalue"
+$row.'Help message' = "delete a value from a Alias"
+$row.Example = "pfsense_api -server '' -username '' -Password '' -service Alias -action deletevalue name Value Subnet(CIDR method) 'Subnet is only necessary if you add to a network alias'"
+$ManAlias.Rows.Add($row)
 
 
 $manall = $man + $newline + $manroute + $newline + $manint + $newline + $manGateway + $newline + $mandnsresolver + $newline + $manportfwd + $newline + $ManAlias + $newline

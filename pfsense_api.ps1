@@ -5,13 +5,13 @@
     [Parameter(Mandatory=$true, Position=2,HelpMessage='The Password')] [PSObject] $Password,
     [Parameter(Mandatory=$false, Position=3,HelpMessage='The service you would like to talke to')] [PSObject] $service,
     [Parameter(Mandatory=$false, Position=4,HelpMessage='The action you would like to do on the service')] [PSObject] $Action,
-    [Parameter(Mandatory=$false, Position=5,HelpMessage='The Argument you would like to give to the action')] [PSObject] $Argument1,
-    [Parameter(Mandatory=$false, Position=6,HelpMessage='The Argument you would like to give to the action')] [PSObject] $Argument2, 
-    [Parameter(Mandatory=$false, Position=7,HelpMessage='The Argument you would like to give to the action')] [PSObject] $Argument3, 
-    [Parameter(Mandatory=$false, Position=8,HelpMessage='The Argument you would like to give to the action')] [PSObject] $Argument4,
-    [Parameter(Mandatory=$false, Position=9,HelpMessage='The Argument you would like to give to the action')] [PSObject] $Argument5, 
-    [Parameter(Mandatory=$false, Position=10,HelpMessage='The Argument you would like to give to the action')] [PSObject] $Argument6, 
-    [Parameter(Mandatory=$false, Position=11,HelpMessage='The Argument you would like to give to the action')] [PSObject] $Argument7, 
+    [Parameter(Mandatory=$false, Position=5,HelpMessage='The Argument you would like to give to the action')] [PSObject] $Argument1 = " ",
+    [Parameter(Mandatory=$false, Position=6,HelpMessage='The Argument you would like to give to the action')] [PSObject] $Argument2 = " ", 
+    [Parameter(Mandatory=$false, Position=7,HelpMessage='The Argument you would like to give to the action')] [PSObject] $Argument3 = " ", 
+    [Parameter(Mandatory=$false, Position=8,HelpMessage='The Argument you would like to give to the action')] [PSObject] $Argument4 = " ",
+    [Parameter(Mandatory=$false, Position=9,HelpMessage='The Argument you would like to give to the action')] [PSObject] $Argument5 = " ", 
+    [Parameter(Mandatory=$false, Position=10,HelpMessage='The Argument you would like to give to the action')] [PSObject] $Argument6 = " ", 
+    [Parameter(Mandatory=$false, Position=11,HelpMessage='The Argument you would like to give to the action')] [PSObject] $Argument7 = " ", 
 
     [Switch] $NoTest,
     [Switch] $NoTLS
@@ -95,14 +95,14 @@ Function Post-request{
     #>
     Param
     (
-        [Parameter(Mandatory=$true, Position=0,HelpMessage='Valid/active websession to server')] [PSObject] $Session,
+        [Parameter(Mandatory=$true, Position=0,HelpMessage='Valid/active websession to server')] [PSObject] $Connection,
         [Parameter(Mandatory=$true, Position=1,HelpMessage='The PostData as a Dictonary')] [PSObject] $dictPostData,
         [Parameter(Mandatory=$true, Position=2,HelpMessage='The Uri Get extension to setup the connection')] [PSObject] $UriGetExtension, 
         [Parameter(Mandatory=$true, Position=3,HelpMessage='The Uri post extension for the post request')] [PSObject] $UriPostExtension,
         [Switch] $Multiform
     )
-    [bool] $NoTLS = $Session.dictOptions.NoTLS
-    [Microsoft.PowerShell.Commands.WebRequestSession] $webSession = $Session.pfWebSession
+    [bool] $NoTLS = $Connection.dictOptions.NoTLS
+    [Microsoft.PowerShell.Commands.WebRequestSession] $webSession = $Connection.pfWebSession
     $uri = 'https://{0}/{1}' -f $Server, $UriGetExtension
     If ($NoTLS) 
     {
@@ -185,11 +185,11 @@ Function Get-Request{
     #>
     Param
     (
-        [Parameter(Mandatory=$true, Position=0,HelpMessage='Valid/active websession to server')] [PSObject] $Session,
+        [Parameter(Mandatory=$true, Position=0,HelpMessage='Valid/active websession to server')] [PSObject] $Connection,
         [Parameter(Mandatory=$true, Position=1,HelpMessage='The Uri Get extension')] [PSObject] $UriGetExtension 
     )
-    [bool] $NoTLS = $Session.dictOptions.NoTLS
-    [Microsoft.PowerShell.Commands.WebRequestSession] $webSession = $Session.pfWebSession
+    [bool] $NoTLS = $Connection.dictOptions.NoTLS
+    [Microsoft.PowerShell.Commands.WebRequestSession] $webSession = $Connection.pfWebSession
     $uri = 'https://{0}/{1}' -f $Server,$UriGetExtension
     If ($NoTLS) 
     {
@@ -204,14 +204,14 @@ Function Get-Request{
 Function Logout {
     Param([Parameter(Mandatory=$true, Position=0,HelpMessage='Valid/active websession to server')] [PSObject]$Connection)
     $dictPostData = @{logout=""}
-    Post-request -Session @Connection -dictPostData $dictPostData -UriGetExtension "index.php" -UriPostExtension "index.php"
+    Post-request -Connection @Connection -dictPostData $dictPostData -UriGetExtension "index.php" -UriPostExtension "index.php"
 }
 
 
 # pfsense_api -server '' -username '' -Password '' -service Route -action print                                                                                          
 Function Printe_route{
     Param([Parameter(Mandatory=$true, Position=0,HelpMessage='Valid/active websession to server')][PSObject]$Connection) 
-    $get_all_routes = get-Request -Session @Connection -UriGetExtension "system_routes.php"
+    $get_all_routes = get-Request -Connection @Connection -UriGetExtension "system_routes.php"
     $all_routes = $($get_all_routes.ParsedHtml.body.getElementsByClassName("table table-striped table-hover table-condensed table-rowdblclickedit") | %{$_.InnerText}).split([Environment]::NewLine) | Where-Object {$_} | Select -Skip 1
     $all_routes = @($all_routes -replace "-", "" -replace "/"," " -replace "  "," ")
     $indexNumber = 0
@@ -234,10 +234,10 @@ Function Add_route{
         gateway=$Argument3
         descr=$Argument4
         save="Save"}
-    Post-request -Session @Connection -dictPostData $dictPostData -UriGetExtension "system_routes_edit.php" -UriPostExtension "system_routes_edit.php"
+    Post-request -Connection @Connection -dictPostData $dictPostData -UriGetExtension "system_routes_edit.php" -UriPostExtension "system_routes_edit.php"
     $dictPostData = @{
         apply="Apply+Changes"}
-    Post-request -Session @Connection -dictPostData $dictPostData -UriGetExtension "system_routes.php" -UriPostExtension "system_routes.php"
+    Post-request -Connection @Connection -dictPostData $dictPostData -UriGetExtension "system_routes.php" -UriPostExtension "system_routes.php"
 }
 
 
@@ -249,7 +249,7 @@ Function delete_route{
     [Parameter(Mandatory=$true, Position=1,HelpMessage='The Argument you would like to give to the action')] [PSObject] $Argument1,
     [Parameter(Mandatory=$true, Position=2,HelpMessage='The Argument you would like to give to the action')] [PSObject] $Argument2,
     [Parameter(Mandatory=$true, Position=3,HelpMessage='The Argument you would like to give to the action')] [PSObject] $Argument3)
-    $get_all_routes = get-Request -Session $Connection -UriGetExtension "system_routes.php"
+    $get_all_routes = get-Request -Connection $Connection -UriGetExtension "system_routes.php"
     $route_to_delete = "{0}/{1} {2}" -f $Argument1,$Argument2,$Argument3
     try{
     $ID = $($($($get_all_routes.ParsedHtml.body.getElementsByClassName("table table-striped table-hover table-condensed table-rowdblclickedit") | %{$_.innerHTML -split "<TR>"} | select-string -pattern $($($route_to_delete) -split("\s+"))[0]) -split "<A" | select-string -pattern 'title="Delete route"')  -split ";")[1] -replace "[^0-9]" , ''
@@ -257,14 +257,14 @@ Function delete_route{
     $dictPostData = @{
             act="del"
             id=$ID}
-    Post-request -Session @Connection -dictPostData $dictPostData -UriGetExtension "system_routes_edit.php" -UriPostExtension "system_routes.php"
+    Post-request -Connection @Connection -dictPostData $dictPostData -UriGetExtension "system_routes_edit.php" -UriPostExtension "system_routes.php"
 }
 
 
 # pfsense_api -server '' -username '' -Password '' -service interface -action print
 function print_interface{
     Param([Parameter(Mandatory=$true, Position=0,HelpMessage='Valid/active websession to server')][PSObject]$Connection) 
-    $get_all_interfaces = get-Request -Session @Connection -UriGetExtension ""
+    $get_all_interfaces = get-Request -Connection @Connection -UriGetExtension ""
     $all_interfaces = @($($get_all_interfaces.ParsedHtml.getElementById("widget-interfaces-0").innerText).split([Environment]::NewLine) | Where-Object {$_} | Select -Skip 1 | Select -SkipLast 9)
     $indexNumber = 0
     $all_interfaces | %{"{0}" -f $all_interfaces[$indexnumber]; $indexNumber++ }
@@ -274,7 +274,7 @@ function print_interface{
 # pfsense_api -server '' -username '' -Password '' -service gateway -action print
 function print_Gateway{
     Param([Parameter(Mandatory=$true, Position=0,HelpMessage='Valid/active websession to server')][PSObject]$Connection) 
-    $get_all_gateways = get-Request -Session @Connection -UriGetExtension "system_gateways.php"
+    $get_all_gateways = get-Request -Connection @Connection -UriGetExtension "system_gateways.php"
     $all_gateways = @($($get_all_gateways.ParsedHtml.getElementById("gateways").innerText).split([Environment]::NewLine) | Where-Object {$_} | Select -Skip 1)
     $indexNumber = 0
     $all_gateways | %{"{0}" -f $all_gateways[$indexnumber]; $indexNumber++ }
@@ -293,7 +293,7 @@ function add_Gateway{
     [Parameter(Mandatory=$true, Position=4,HelpMessage='The Argument you would like to give to the action')] [PSObject] $Argument5
     )
     # PFsense uses the network internal name's so we have to map those to the client names
-    $get_all_netwoks = get-Request -Session @Connection -UriGetExtension "system_gateways_edit.php?id=0"
+    $get_all_netwoks = get-Request -Connection @Connection -UriGetExtension "system_gateways_edit.php?id=0"
     $get_all_netwoks.ParsedHtml.getElementById("interface") | %{if ($_.textContent -eq "$Argument4"){$interface_intern = $_.value}}
     $dictPostData = @{
         interface=$interface_intern
@@ -314,10 +314,10 @@ function add_Gateway{
         alert_interval=""
         friendlyiface=""
         save="Save"}
-    Post-request -Session @Connection -dictPostData $dictPostData -UriGetExtension "system_gateways.php" -UriPostExtension "system_gateways_edit.php"
+    Post-request -Connection @Connection -dictPostData $dictPostData -UriGetExtension "system_gateways.php" -UriPostExtension "system_gateways_edit.php"
     $dictPostData = @{
         apply="Apply+Changes"}
-    Post-request -Session @Connection -dictPostData $dictPostData -UriGetExtension "system_gateways.php" -UriPostExtension "system_gateways.php"
+    Post-request -Connection @Connection -dictPostData $dictPostData -UriGetExtension "system_gateways.php" -UriPostExtension "system_gateways.php"
 }
 
 
@@ -327,24 +327,24 @@ Function delete_Gateway{
     (
     [Parameter(Mandatory=$true, Position=0,HelpMessage='Valid/active websession to server')] [PSObject] $Connection,   
     [Parameter(Mandatory=$true, Position=1,HelpMessage='The Argument you would like to give to the action')] [PSObject] $Argument1)
-    $get_all_gateways = get-Request -Session $Connection -UriGetExtension "system_gateways.php"
+    $get_all_gateways = get-Request -Connection $Connection -UriGetExtension "system_gateways.php"
     try{
     $ID = $($($get_all_gateways.ParsedHtml.body.getElementsByClassName("table table-striped table-hover table-condensed table-rowdblclickedit") | %{$_.innerHTML -split "<TR"} | select-string -pattern $Argument1 | %{$_ -split "<TD"} | %{$_ -split "<A"} | select-string -pattern 'title="Delete gateway"') -split ";")[1] -replace "[^0-9]" , ''
     }catch{write-warning "Did not find the combination you entered"}
     $dictPostData = @{
             act="del"
             id=$ID}
-    Post-request -Session @Connection -dictPostData $dictPostData -UriGetExtension "system_gateways.php" -UriPostExtension "system_gateways.php"
+    Post-request -Connection @Connection -dictPostData $dictPostData -UriGetExtension "system_gateways.php" -UriPostExtension "system_gateways.php"
     $dictPostData = @{
         apply="Apply+Changes"}
-    Post-request -Session @Connection -dictPostData $dictPostData -UriGetExtension "system_gateways.php" -UriPostExtension "system_gateways.php"
+    Post-request -Connection @Connection -dictPostData $dictPostData -UriGetExtension "system_gateways.php" -UriPostExtension "system_gateways.php"
 }
 
 
 #pfsense_api -server '' -username '' -Password '' -service dnsresolver -action print
 Function print_dnsresolver{    
     Param([Parameter(Mandatory=$true, Position=0,HelpMessage='Valid/active websession to server')][PSObject]$Connection) 
-    $get_all_dnsresolver = get-Request -Session @Connection -UriGetExtension "services_unbound.php"
+    $get_all_dnsresolver = get-Request -Connection @Connection -UriGetExtension "services_unbound.php"
     $NetworkInterfaces = ""
     $($get_all_dnsresolver.ParsedHtml.getElementById("active_interface[]")) | %{if($_.selected) {$NetworkInterfaces += $_.text}}
     $OutgoingNetworkInterfaces = ""
@@ -369,7 +369,7 @@ Function UploadCustom_dnsresolver{
     )
     # ToDo: check if file in same location or if full path is given
     $CostumOptions = $(get-Content $Argument1) -join "`n`r"
-    $get_all_unbound = get-Request -Session @Connection -UriGetExtension "services_unbound.php"
+    $get_all_unbound = get-Request -Connection  @Connection -UriGetExtension "services_unbound.php"
     $dictPostData = @{
         "enable" = $($get_all_unbound.ParsedHtml.getElementById("enable")).value
         "port" = $($get_all_unbound.ParsedHtml.getElementById("port")).value
@@ -383,9 +383,9 @@ Function UploadCustom_dnsresolver{
     $($get_all_unbound.ParsedHtml.getElementById("active_interface[]")) | %{if($_.selected) {$dictPostData.Add("active_interface[]",$_.value())}}
     $($get_all_unbound.ParsedHtml.getElementById("outgoing_interface[]")) | %{if($_.selected) {$dictPostData.Add("outgoing_interface[]",$_.value())}}
     $($get_all_unbound.ParsedHtml.getElementById("system_domain_local_zone_type")) | %{if($_.selected) {$dictPostData.Add("system_domain_local_zone_type",$_.value())}}
-    Post-request -Session @Connection -dictPostData $dictPostData -UriGetExtension "services_unbound.php" -UriPostExtension "services_unbound.php"
+    Post-request -Connection @Connection -dictPostData $dictPostData -UriGetExtension "services_unbound.php" -UriPostExtension "services_unbound.php"
     $dictPostData = @{"apply"="Apply Changes"}
-    Post-request -Session @Connection -dictPostData $dictPostData -UriGetExtension "services_unbound.php" -UriPostExtension "services_unbound.php"
+    Post-request -Connection @Connection -dictPostData $dictPostData -UriGetExtension "services_unbound.php" -UriPostExtension "services_unbound.php"
 }
 
 
@@ -409,9 +409,9 @@ Function addhost_dnsresolver{
         aliasdescription0=""
         save="Save"
     }
-    Post-request -Session @Connection -dictPostData $dictPostData -UriGetExtension "services_unbound_host_edit.php" -UriPostExtension "services_unbound_host_edit.php"
+    Post-request -Connection @Connection -dictPostData $dictPostData -UriGetExtension "services_unbound_host_edit.php" -UriPostExtension "services_unbound_host_edit.php"
     $dictPostData = @{"apply"="Apply Changes"}
-    Post-request -Session @Connection -dictPostData $dictPostData -UriGetExtension "services_unbound.php" -UriPostExtension "services_unbound.php"
+    Post-request -Connection @Connection -dictPostData $dictPostData -UriGetExtension "services_unbound.php" -UriPostExtension "services_unbound.php"
 }
 
 
@@ -422,7 +422,7 @@ Function Deletehost_dnsresolver{
     [Parameter(Mandatory=$true, Position=0,HelpMessage='Valid/active websession to server')] [PSObject] $Connection,   
     [Parameter(Mandatory=$true, Position=1,HelpMessage='The Argument you would like to give to the action')] [PSObject] $Argument1,
     [Parameter(Mandatory=$true, Position=2,HelpMessage='The Argument you would like to give to the action')] [PSObject] $Argument2)
-    $get_all_resolverhosts = get-Request -Session $Connection -UriGetExtension "services_unbound.php"
+    $get_all_resolverhosts = get-Request -Connection $Connection -UriGetExtension "services_unbound.php"
     try{
     $ID = $($($($($($($get_all_resolverhosts.ParsedHtml.body.getElementsByClassName("container static") | %{$_.outerHTML}) -split("<TR")) | Select-String -Pattern "<TD>$Argument1" | Select-String -Pattern "<TD>$Argument2") -split ("<A") | Select-String -Pattern "Edit host override") -split "id=")[1]) -split(";")[0] -replace "[^0-9]" , ''
     }catch{write-warning "Did not find the combination you entered"}
@@ -430,9 +430,9 @@ Function Deletehost_dnsresolver{
             type="host"
             act="del"
             id=$ID}
-    Post-request -Session @Connection -dictPostData $dictPostData -UriGetExtension "services_unbound.php" -UriPostExtension "services_unbound.php"
+    Post-request -Connection @Connection -dictPostData $dictPostData -UriGetExtension "services_unbound.php" -UriPostExtension "services_unbound.php"
     $dictPostData = @{apply="Apply+Changes"}
-    Post-request -Session @Connection -dictPostData $dictPostData -UriGetExtension "services_unbound.php" -UriPostExtension "services_unbound.php"
+    Post-request -Connection @Connection -dictPostData $dictPostData -UriGetExtension "services_unbound.php" -UriPostExtension "services_unbound.php"
 }
 
 
@@ -452,9 +452,9 @@ Function adddomain_dnsresolver{
         descr=$Argument3
         save="Save"
     }
-    Post-request -Session @Connection -dictPostData $dictPostData -UriGetExtension "services_unbound_domainoverride_edit.php" -UriPostExtension "services_unbound_domainoverride_edit.php"
+    Post-request -Connection @Connection -dictPostData $dictPostData -UriGetExtension "services_unbound_domainoverride_edit.php" -UriPostExtension "services_unbound_domainoverride_edit.php"
     $dictPostData = @{"apply"="Apply Changes"}
-    Post-request -Session @Connection -dictPostData $dictPostData -UriGetExtension "services_unbound.php" -UriPostExtension "services_unbound.php"
+    Post-request -Connection @Connection -dictPostData $dictPostData -UriGetExtension "services_unbound.php" -UriPostExtension "services_unbound.php"
 }
 
 
@@ -463,7 +463,7 @@ Function Deletedomain_dnsresolver{
     Param(
     [Parameter(Mandatory=$true, Position=0,HelpMessage='Valid/active websession to server')] [PSObject] $Connection,   
     [Parameter(Mandatory=$true, Position=1,HelpMessage='The Argument you would like to give to the action')] [PSObject] $Argument1)
-    $get_all_resolverdomains = get-Request -Session $Connection -UriGetExtension "services_unbound.php"
+    $get_all_resolverdomains = get-Request -Connection $Connection -UriGetExtension "services_unbound.php"
     try{
     $ID = $($($($($($($get_all_resolverdomains.ParsedHtml.body.getElementsByClassName("container static") | %{$_.outerHTML}) -split("<TR")) | Select-String -Pattern "<TD>$Argument1") -split ("<A") | Select-String -Pattern "Domain Override") -split "id=")[1]) -split(";")-replace "[^0-9]" , ''
     }catch{write-warning "Did not find the combination you entered"}
@@ -471,16 +471,16 @@ Function Deletedomain_dnsresolver{
             type="doverride"
             act="del"
             id=$ID}
-    Post-request -Session @Connection -dictPostData $dictPostData -UriGetExtension "services_unbound.php" -UriPostExtension "services_unbound.php"
+    Post-request -Connection @Connection -dictPostData $dictPostData -UriGetExtension "services_unbound.php" -UriPostExtension "services_unbound.php"
     $dictPostData = @{apply="Apply+Changes"}
-    Post-request -Session @Connection -dictPostData $dictPostData -UriGetExtension "services_unbound.php" -UriPostExtension "services_unbound.php"
+    Post-request -Connection @Connection -dictPostData $dictPostData -UriGetExtension "services_unbound.php" -UriPostExtension "services_unbound.php"
 }
 
 
 #pfsense_api -server '' -username '' -Password '' -service portfwd -action print
 Function print_portfwd{
     Param([Parameter(Mandatory=$true, Position=0,HelpMessage='Valid/active websession to server')][PSObject]$Connection) 
-    $get_all_Portfwd = get-Request -Session @Connection -UriGetExtension "firewall_nat.php"
+    $get_all_Portfwd = get-Request -Connection @Connection -UriGetExtension "firewall_nat.php"
     $all_portfwd = @($($get_all_Portfwd.ParsedHtml.getElementById("ruletable") | %{$_.InnerText}) -split([Environment]::NewLine) | Where-Object {$_} | Select -Skip 1)
     $indexNumber = 0
     $all_portfwd | %{"{0}" -f $all_portfwd[$indexnumber]; $indexNumber++ }
@@ -498,7 +498,7 @@ Function add_portfwd{
     [Parameter(Mandatory=$true, Position=5,HelpMessage='The Argument you would like to give to the action')] [PSObject] $Argument5,
     [Parameter(Mandatory=$true, Position=6,HelpMessage='The Argument you would like to give to the action')] [PSObject] $Argument6,
     [Parameter(Mandatory=$true, Position=7,HelpMessage='The Argument you would like to give to the action')] [PSObject] $Argument7)
-    $get_all_netwoks = get-Request -Session @Connection -UriGetExtension "system_gateways_edit.php?id=0"
+    $get_all_netwoks = get-Request -Connection @Connection -UriGetExtension "system_gateways_edit.php?id=0"
     $get_all_netwoks.ParsedHtml.getElementById("interface") | %{if ($_.textContent -eq "$Argument1"){$interface_intern = $_.value}}
     $dictPostData = @{
         interface=$interface_intern
@@ -520,9 +520,9 @@ Function add_portfwd{
         "filter-rule-association"=""
         after=""
         save="Save"}
-    Post-request -Session @Connection -dictPostData $dictPostData -UriGetExtension "firewall_nat_edit.php" -UriPostExtension "firewall_nat_edit.php"
+    Post-request -Connection @Connection -dictPostData $dictPostData -UriGetExtension "firewall_nat_edit.php" -UriPostExtension "firewall_nat_edit.php"
     $dictPostData = @{"apply"="Apply Changes"}
-    Post-request -Session @Connection -dictPostData $dictPostData -UriGetExtension "firewall_nat.php" -UriPostExtension "firewall_nat.php"
+    Post-request -Connection @Connection -dictPostData $dictPostData -UriGetExtension "firewall_nat.php" -UriPostExtension "firewall_nat.php"
 
 }
 
@@ -535,27 +535,27 @@ Function Delete_portfwd{
     [Parameter(Mandatory=$true, Position=2,HelpMessage='The Argument you would like to give to the action')] [PSObject] $Argument2,
     [Parameter(Mandatory=$true, Position=3,HelpMessage='The Argument you would like to give to the action')] [PSObject] $Argument3,
     [Parameter(Mandatory=$true, Position=4,HelpMessage='The Argument you would like to give to the action')] [PSObject] $Argument4)
-    $get_all_Portfwd = get-Request -Session @Connection -UriGetExtension "firewall_nat.php"
+    $get_all_Portfwd = get-Request -Connection @Connection -UriGetExtension "firewall_nat.php"
     try{
     $ID = $($($($($($get_all_Portfwd.ParsedHtml.getElementById("ruletable")| %{$_.outerHTML}) -split("<TR") | Select-String -Pattern "<TD>$Argument1" | Select-String -Pattern "<TD>$Argument2" | Select-String -Pattern "<TD>$Argument3" | Select-String -Pattern "<TD>$Argument4" ) -split ("<A") | Select-String -Pattern "firewall_nat_edit") -split "id=")[1]) -split (";") -replace "[^0-9]" , ''
     }catch{write-warning "Did not find the combination you entered"}
     $dictPostData = @{
         act="del"
         id=$ID}
-    Post-request -Session @Connection -dictPostData $dictPostData -UriGetExtension "firewall_nat.php" -UriPostExtension "firewall_nat.php"
+    Post-request -Connection @Connection -dictPostData $dictPostData -UriGetExtension "firewall_nat.php" -UriPostExtension "firewall_nat.php"
     $dictPostData = @{apply="Apply+Changes"}
-    Post-request -Session @Connection -dictPostData $dictPostData -UriGetExtension "firewall_nat.php" -UriPostExtension "firewall_nat.php"
+    Post-request -Connection @Connection -dictPostData $dictPostData -UriGetExtension "firewall_nat.php" -UriPostExtension "firewall_nat.php"
 }
 
 
 #pfsense_api -server '' -username '' -Password '' -service Alias -action print
 Function print_Alias{
     Param([Parameter(Mandatory=$true, Position=0,HelpMessage='Valid/active websession to server')][PSObject]$Connection) 
-    $get_all_IPAlias = get-Request -Session @Connection -UriGetExtension "firewall_aliases.php?tab=ip"
+    $get_all_IPAlias = get-Request -Connection @Connection -UriGetExtension "firewall_aliases.php?tab=ip"
     $all_IPAlias = $(@($($get_all_IPAlias.ParsedHtml.body.getElementsByClassName("table-responsive") | %{$_.InnerText}) -split([Environment]::NewLine) | Where-Object {$_} | Select -Skip 1)) -join "`n`r"
-    $get_all_PortAlias = get-Request -Session @Connection -UriGetExtension "firewall_aliases.php?tab=port"
+    $get_all_PortAlias = get-Request -Connection @Connection -UriGetExtension "firewall_aliases.php?tab=port"
     $all_PortAlias = $(@($($get_all_PortAlias.ParsedHtml.body.getElementsByClassName("table-responsive") | %{$_.InnerText}) -split([Environment]::NewLine) | Where-Object {$_} | Select -Skip 1)) -join "`n`r"
-    $get_all_URLAlias = get-Request -Session @Connection -UriGetExtension "firewall_aliases.php?tab=url"
+    $get_all_URLAlias = get-Request -Connection @Connection -UriGetExtension "firewall_aliases.php?tab=url"
     $all_URLAlias = $(@($($get_all_URLAlias.ParsedHtml.body.getElementsByClassName("table-responsive") | %{$_.InnerText}) -split([Environment]::NewLine) | Where-Object {$_} | Select -Skip 1)) -join "`n`r"
     "Firewall Aliases IP:`n`r{0}`n`r`n`nFirewall Aliases Ports:`n`r{1}`n`r`n`rFirewall Aliases URLs`n`r{2}" -f $all_IPAlias,$all_PortAlias,$all_URLAlias
 }
@@ -565,10 +565,10 @@ Function print_Alias{
 Function SpecificPrint_Alias{
     Param([Parameter(Mandatory=$true, Position=0,HelpMessage='Valid/active websession to server')][PSObject]$Connection,
     [Parameter(Mandatory=$true, Position=1,HelpMessage='The Argument you would like to give to the action')] [PSObject] $Argument1)
-    $get_all_alias = get-Request -Session @Connection -UriGetExtension "firewall_aliases.php?tab=all"
+    $get_all_alias = get-Request -Connection @Connection -UriGetExtension "firewall_aliases.php?tab=all"
     try{$ID = $($($($($($($get_all_alias.ParsedHtml.body.getElementsByClassName("table table-striped table-hover table-condensed sortable-theme-bootstrap")| %{$_.outerHTML}) -split("<TR") | Select-String -Pattern $Argument1) -split("<TD"))[1]) -split "id=")[1] -split(";"))[0] -replace "[^0-9]" , ''}
     catch{write-warning "Did not find the Alias you entered"}
-    $get_alias = get-Request -Session @Connection -UriGetExtension "firewall_aliases_edit.php?id=$ID"
+    $get_alias = get-Request -Connection @Connection -UriGetExtension "firewall_aliases_edit.php?id=$ID"
     $indexNumber = 0
     $($get_alias.ParsedHtml.getElementById("type")) | %{if($_.selected) {$type_value = $_.value()} }
     if($type_value -eq "network"){
@@ -592,49 +592,163 @@ Function add_Alias{
     [Parameter(Mandatory=$true, Position=2,HelpMessage='The Argument you would like to give to the action')] [PSObject] $Argument2,
     [Parameter(Mandatory=$true, Position=3,HelpMessage='The Argument you would like to give to the action')] [PSObject] $Argument3,
     [Parameter(Mandatory=$true, Position=4,HelpMessage='The Argument you would like to give to the action')] [PSObject] $Argument4,
-    [Parameter(Mandatory=$true, Position=5,HelpMessage='The Argument you would like to give to the action')] [PSObject] $Argument5)
+    [Parameter(Mandatory=$false, Position=5,HelpMessage='The Argument you would like to give to the action')] [PSObject] $Argument5)
     if($Argument1 -eq "Host"){$dictPostData = @{
         name=$Argument2
         descr=$Argument3
-        type="Host"
+        type="host"
         address0=$Argument4
-        detail0=""
+        detail0="First Value"
         tab="ip"
         origname=""
-        save="Save"}}
+        save="Save"}
+        Post-request -Connection @Connection -dictPostData $dictPostData -UriGetExtension "firewall_aliases_edit.php?tab=ip" -UriPostExtension "firewall_aliases_edit.php?tab=ip"}
     if($Argument1 -eq "Port"){$dictPostData = @{
         name=$Argument2
         descr=$Argument3
         type="Port"
         address0=$Argument4
-        detail0=""
-        tab="ip"
+        detail0="First Value"
+        tab="port"
         origname=""
-        save="Save"}}
+        save="Save"}
+        Post-request -Connection @Connection -dictPostData $dictPostData -UriGetExtension "firewall_aliases_edit.php?tab=port.php" -UriPostExtension "firewall_aliases_edit.php?tab=port.php"}
     if($Argument1 -eq "network"){$dictPostData = @{
         name=$Argument2
         descr=$Argument3
         type="network"
         address0=$Argument4
         address_subnet0=$Argument5
-        detail0=""
+        detail0="First Value"
         tab="ip"
         origname=""
-        save="Save"}}
+        save="Save"}
+        Post-request -Connection @Connection -dictPostData $dictPostData -UriGetExtension "firewall_aliases_edit.php?tab=ip.php" -UriPostExtension "firewall_aliases_edit.php?tab=ip.php"}
     if($Argument1 -eq "url"){$dictPostData = @{
         name=$Argument2
         descr=$Argument3
         type="url"
         address0=$Argument4
         address_subnet0=$Argument5
-        detail0=""
-        tab="ip"
+        detail0="First Value"
+        tab="url"
         origname=""
-        save="Save"}}
-    Post-request -Session @Connection -dictPostData $dictPostData -UriGetExtension "firewall_aliases_edit.php?tab=ip.php" -UriPostExtension "firewall_aliases_edit.php?tab=ip.php"
+        save="Save"}
+        Post-request -Connection @Connection -dictPostData $dictPostData -UriGetExtension "firewall_aliases_edit.php?tab=url.php" -UriPostExtension "firewall_aliases_edit.php?tab=url.php"}
     $dictPostData = @{"apply"="Apply Changes"}
-    Post-request -Session @Connection -dictPostData $dictPostData -UriGetExtension "firewall_aliases.php?tab=ip.php" -UriPostExtension "firewall_aliases.php?tab=ip.php"
+    Post-request -Connection @Connection -dictPostData $dictPostData -UriGetExtension "firewall_aliases.php?tab=all" -UriPostExtension "firewall_aliases.php?tab=all"
 }
+
+#pfsense_api -server '' -username '' -Password '' -service Alias -action delete name
+Function delete_Alias{
+    Param([Parameter(Mandatory=$true, Position=0,HelpMessage='Valid/active websession to server')][PSObject]$Connection,
+    [Parameter(Mandatory=$true, Position=1,HelpMessage='The Argument you would like to give to the action')] [PSObject] $Argument1)
+    $get_all_alias = get-Request -Connection @Connection -UriGetExtension "firewall_aliases.php?tab=all"
+    try{$ID = $($($($($($($get_all_alias.ParsedHtml.body.getElementsByClassName("table table-striped table-hover table-condensed sortable-theme-bootstrap")| %{$_.outerHTML}) -split("<TR") | Select-String -Pattern $Argument1) -split("<TD"))[1]) -split "id=")[1] -split(";"))[0] -replace "[^0-9]" , ''}
+    catch{write-warning "Did not find the Alias you entered"}
+    $dictPostData = @{
+        act="del"
+        tab="all"
+        id=$ID}
+    Post-request -Connection @Connection -dictPostData $dictPostData -UriGetExtension "firewall_aliases_edit.php" -UriPostExtension "firewall_aliases.php?tab=all"
+    $dictPostData = @{apply="Apply+Changes"}
+    Post-request -Connection @Connection -dictPostData $dictPostData -UriGetExtension "firewall_aliases_edit.php" -UriPostExtension "firewall_aliases.php?tab=all"
+}
+
+#pfsense_api -server '' -username '' -Password '' -service Alias -action addvalue name `"Description this must be between quotation marks`" Address Subnet(CIDR method) 'Subnet is only necessary if you add to a network alias'
+Function addvalue_Alias{
+    Param(
+    [Parameter(Mandatory=$true, Position=0,HelpMessage='Valid/active websession to server')] [PSObject] $Connection,   
+    [Parameter(Mandatory=$true, Position=1,HelpMessage='The Argument you would like to give to the action')] [PSObject] $Argument1,
+    [Parameter(Mandatory=$true, Position=2,HelpMessage='The Argument you would like to give to the action')] [PSObject] $Argument2,
+    [Parameter(Mandatory=$true, Position=3,HelpMessage='The Argument you would like to give to the action')] [PSObject] $Argument3,
+    [Parameter(Mandatory=$False, Position=4,HelpMessage='The Argument you would like to give to the action')] [PSObject] $Argument4)
+    $get_all_alias = get-Request -Connection @Connection -UriGetExtension "firewall_aliases.php?tab=all"
+    try{$ID = $($($($($($($get_all_alias.ParsedHtml.body.getElementsByClassName("table table-striped table-hover table-condensed sortable-theme-bootstrap")| %{$_.outerHTML}) -split("<TR") | Select-String -Pattern $Argument1) -split("<TD"))[1]) -split "id=")[1] -split(";"))[0] -replace "[^0-9]" , ''}
+    catch{write-warning "Did not find the Alias you entered"}
+    $get_alias = get-Request -Connection @Connection -UriGetExtension "firewall_aliases_edit.php?id=$ID"
+    $($get_alias.ParsedHtml.getElementById("type")) | %{if($_.selected) {$type_value = $_.value()} }
+    $dictPostData = @{
+        name=$($get_alias.ParsedHtml.getElementById("name").value)
+        descr=$($get_alias.ParsedHtml.getElementById("descr").value)
+        tab=$($get_alias.ParsedHtml.getElementById("tab").value)
+        type=$type_value
+        origname=$($get_alias.ParsedHtml.getElementById("origname").value)
+        id=$($get_alias.ParsedHtml.getElementById("id").value)
+        save="Save"}
+    $indexNumber = 0
+    $($get_alias.ParsedHtml.getElementById("type")) | %{if($_.selected) {$type_value = $_.value()} }
+    if($type_value -eq "network"){
+        while($True){
+            if(-not $($get_alias.ParsedHtml.getElementById("address$indexnumber")).value){break}
+            $dictPostData.Add("address$indexnumber",$($get_alias.ParsedHtml.getElementById("address$indexnumber").value))
+            $dictPostData.Add("address_subnet$indexnumber",$($get_alias.ParsedHtml.getElementById("address_subnet$indexnumber").value))
+            $dictPostData.Add("detail$indexnumber",$($get_alias.ParsedHtml.getElementById("detail$indexnumber").value))
+            $indexNumber++}
+        $dictPostData.Add("address$indexnumber",$Argument3)
+        $dictPostData.Add("address_subnet$indexnumber",$Argument4)
+        $dictPostData.Add("detail$indexnumber",$Argument2)
+        }
+    else{
+        while($True){
+            if(-not $($get_alias.ParsedHtml.getElementById("address$indexnumber")).value){break}
+            $dictPostData.Add("address$indexnumber",$($get_alias.ParsedHtml.getElementById("address$indexnumber").value))
+            $dictPostData.Add("detail$indexnumber",$($get_alias.ParsedHtml.getElementById("detail$indexnumber").value))
+            $indexNumber++}
+        $dictPostData.Add("address$indexnumber",$Argument3)
+        $dictPostData.Add("detail$indexnumber",$Argument2)
+        }
+    Post-request -Connection @Connection -dictPostData $dictPostData -UriGetExtension "firewall_aliases_edit.php?id=$ID" -UriPostExtension "firewall_aliases_edit.php?id=$ID"
+    $dictPostData = @{apply="Apply+Changes"}
+    Post-request -Connection @Connection -dictPostData $dictPostData -UriGetExtension "firewall_aliases_edit.php" -UriPostExtension "firewall_aliases.php?tab=all"
+}
+
+#pfsense_api -server '' -username '' -Password '' -service Alias -action deletevalue name Value Subnet(CIDR method) 'Subnet is only necessary if you add to a network alias'
+Function deletevalue_Alias{
+    Param(
+    [Parameter(Mandatory=$true, Position=0,HelpMessage='Valid/active websession to server')] [PSObject] $Connection,   
+    [Parameter(Mandatory=$true, Position=1,HelpMessage='The Argument you would like to give to the action')] [PSObject] $Argument1,
+    [Parameter(Mandatory=$true, Position=2,HelpMessage='The Argument you would like to give to the action')] [PSObject] $Argument2,
+    [Parameter(Mandatory=$true, Position=3,HelpMessage='The Argument you would like to give to the action')] [PSObject] $Argument3,
+    [Parameter(Mandatory=$False, Position=4,HelpMessage='The Argument you would like to give to the action')] [PSObject] $Argument4)
+    $get_all_alias = get-Request -Connection @Connection -UriGetExtension "firewall_aliases.php?tab=all"
+    try{$ID = $($($($($($($get_all_alias.ParsedHtml.body.getElementsByClassName("table table-striped table-hover table-condensed sortable-theme-bootstrap")| %{$_.outerHTML}) -split("<TR") | Select-String -Pattern $Argument1) -split("<TD"))[1]) -split "id=")[1] -split(";"))[0] -replace "[^0-9]" , ''}
+    catch{write-warning "Did not find the Alias you entered"}
+    $get_alias = get-Request -Connection @Connection -UriGetExtension "firewall_aliases_edit.php?id=$ID"
+    $($get_alias.ParsedHtml.getElementById("type")) | %{if($_.selected) {$type_value = $_.value()} }
+    $dictPostData = @{
+        name=$($get_alias.ParsedHtml.getElementById("name").value)
+        descr=$($get_alias.ParsedHtml.getElementById("descr").value)
+        tab=$($get_alias.ParsedHtml.getElementById("tab").value)
+        type=$type_value
+        origname=$($get_alias.ParsedHtml.getElementById("origname").value)
+        id=$($get_alias.ParsedHtml.getElementById("id").value)
+        save="Save"}
+    $indexNumber = 0
+    if($type_value -eq "network"){
+        while($True){
+            if(-not $($get_alias.ParsedHtml.getElementById("address$indexnumber")).value){break}
+            if(($get_alias.ParsedHtml.getElementById("address$indexnumber").value -ne $Argument2) -or ($get_alias.ParsedHtml.getElementById("address_subnet$indexnumber").value -ne $Argument3)){
+                $dictPostData.Add("address$indexnumber",$($get_alias.ParsedHtml.getElementById("address$indexnumber").value))
+                $dictPostData.Add("address_subnet$indexnumber",$($get_alias.ParsedHtml.getElementById("address_subnet$indexnumber").value))
+                $dictPostData.Add("detail$indexnumber",$($get_alias.ParsedHtml.getElementById("detail$indexnumber").value))}
+            $indexNumber++}
+        }
+    else{
+        while($True){
+            if(-not $($get_alias.ParsedHtml.getElementById("address$indexnumber")).value){break}
+            if($get_alias.ParsedHtml.getElementById("address$indexnumber").value -ne $Argument2){
+                $dictPostData.Add("address$indexnumber",$($get_alias.ParsedHtml.getElementById("address$indexnumber").value))
+                $dictPostData.Add("detail$indexnumber",$($get_alias.ParsedHtml.getElementById("detail$indexnumber").value))}
+            $indexNumber++}
+        }
+    Post-request -Connection @Connection -dictPostData $dictPostData -UriGetExtension "firewall_aliases_edit.php?id=$ID" -UriPostExtension "firewall_aliases_edit.php?id=$ID"
+    $dictPostData = @{apply="Apply+Changes"}
+    Post-request -Connection @Connection -dictPostData $dictPostData -UriGetExtension "firewall_aliases_edit.php" -UriPostExtension "firewall_aliases.php?tab=all"
+}
+
+
+# ToDo: if test fails exit
 
 
 $DefaulkCred  = New-Object System.Management.Automation.PSCredential ($Username, $(ConvertTo-SecureString -string $password -AsPlainText -Force))
@@ -644,10 +758,10 @@ if (-not $service -or $service -eq "Help" -or $service -eq "H"){$HelpMessagehead
 elseif (-not $action -or $action -eq "Help" -or $action -eq "H"){
     if($service -eq "route"){$manroute ; exit}
     elseif($service -eq "Interface"){$manint ; exit}
-    elseif($service -eq "Gateway"){$manint ; exit}
-    elseif($service -eq "dnsresolver"){$manint ; exit}
-    elseif($service -eq "portfwd"){$manint ; exit}
-    elseif($service -eq "Alias"){$manint ; exit}
+    elseif($service -eq "Gateway"){$manGateway ; exit}
+    elseif($service -eq "dnsresolver"){$mandnsresolver ; exit}
+    elseif($service -eq "portfwd"){$manportfwd ; exit}
+    elseif($service -eq "Alias"){$ManAlias ; exit}
     }
 elseif ( -not $NoTest -AND -not $NoTLS){test-connection -Server $Server ; $Connection = Connect-pfSense -Server $Server -Credentials $DefaulkCred} # has test and tls
 elseif ( -not $Notest){test-connection -Server $Server -NoTLS ;$Connection = Connect-pfSense -Server $Server -Credentials $DefaulkCred -NoTLS} #has test and no tls
@@ -655,7 +769,7 @@ elseif ( -not $NoTLS){$Connection = Connect-pfSense -Server $Server -Credentials
 else{$Connection = Connect-pfSense -Server $Server -Credentials $DefaulkCred -NoTLS} # has test and no tls 
 
 try {
-    $connected = get-Request -Session @Connection -UriGetExtension ""
+    $connected = get-Request -Connection @Connection -UriGetExtension ""
     if ($connected.ParsedHtml.getElementById("login")){write-error "Please enter the correct credentials" ; exit}
 }catch{}
 
@@ -693,10 +807,14 @@ elseif ($service -eq "portfwd"){
 
 elseif ($service -eq "Alias"){
     if ($action -eq "print"){print_Alias -Connection @Connection}
-    elseif ($action -eq "SpecificPrint"){SpecificPrint_Alias -Connection @Connection -Argument1 $Argument1}
+    elseif ($action -eq "PrintSpecific"){SpecificPrint_Alias -Connection @Connection -Argument1 $Argument1}
     elseif ($action -eq "add"){add_Alias -Connection @Connection -Argument1 $Argument1 -Argument2 $Argument2 -Argument3 $Argument3 -argument4 $Argument4 -argument5 $Argument5}
-
+    elseif ($action -eq "delete"){delete_Alias -Connection @Connection -Argument1 $Argument1}
+    elseif ($action -eq "addvalue"){addvalue_Alias -Connection @Connection -Argument1 $Argument1 -Argument2 $Argument2 -Argument3 $Argument3 -argument4 $Argument4}
+    elseif ($action -eq "deletevalue"){deletevalue_Alias -Connection @Connection -Argument1 $Argument1 -Argument2 $Argument2 -Argument3 $Argument3}
+    
 }
 
 if ($Connection){Logout -Connection @Connection}
 
+# $server = "192.168.0.1" ; $user = "admin" ; $password = "pfsense"
