@@ -14,6 +14,7 @@ $row.'Help message' = "Prints this text"
 $row.Example = ""
 $man.Rows.Add($row)
 
+
 $newline = New-Object System.Data.DataTable
 $newline.Columns.Add("Service","string") | Out-Null
 $newline.Columns.Add("Action","string") | Out-Null
@@ -22,8 +23,10 @@ $newline.Columns.Add("Example","string") | Out-Null
 $row = $newline.NewRow()
 $row.Service = ""
 $row.'Help message' = ""
+$row.Action = ""
 $row.Example = ""
 $newline.Rows.Add($row)
+
 
 $manroute = New-Object System.Data.DataTable
 $manroute.Columns.Add("Service","string") | Out-Null
@@ -65,6 +68,7 @@ $row.'Help message' = ""
 $row.Example = "pfsense_api -server '' -username '' -Password '' -service Route -action Delete 192.168.0.0 24 WAN_DHCP"
 $manroute.Rows.Add($row)
 
+
 $manint = New-Object System.Data.DataTable
 $manint.Columns.Add("Service","string") | Out-Null
 $manint.Columns.Add("Action","string") | Out-Null
@@ -81,6 +85,7 @@ $row.Action = "Print"
 $row.'Help message' = "Print the interface's"
 $row.Example = "pfsense_api -server '' -username '' -Password '' -service Interface -action print"
 $manint.Rows.Add($row)
+
 
 $manGateway = New-Object System.Data.DataTable
 $manGateway.Columns.Add("Service","string") | Out-Null
@@ -120,6 +125,18 @@ $row.Service = ""
 $row.'Help message' = ""
 $row.Example = "pfsense_api -server '' -username '' -Password '' -service Gateway -action delete new_gateway"
 $manGateway.Rows.Add($row)
+$row = $manGateway.NewRow()
+$row.Service = "Gateway"
+$row.Action = "Default"
+$row.'Help message' = "set a Gateway as the default"
+$row.Example = "pfsense_api -server '' -username '' -Password '' -service Gateway -action default Name 'to set the default gateway to Automatic enter Automatic, for None enter None'"
+$manGateway.Rows.Add($row)
+$row = $manGateway.NewRow()
+$row.Service = ""
+$row.'Help message' = ""
+$row.Example = "pfsense_api -server '' -username '' -Password '' -service Gateway -action default new_gateway"
+$manGateway.Rows.Add($row)
+
 
 $mandnsresolver = New-Object System.Data.DataTable
 $mandnsresolver.Columns.Add("Service","string") | Out-Null
@@ -139,7 +156,7 @@ $row.Example = "pfsense_api -server '' -username '' -Password '' -service dnsres
 $mandnsresolver.Rows.Add($row)
 $row = $mandnsresolver.NewRow()
 $row.Service = "Dnsresolver"
-$row.Action = "Uplouadcostum"
+$row.Action = "Uploadcostum"
 $row.'Help message' = "upload a custom config to the dnsresolver"
 $row.Example = "pfsense_api -server '' -username '' -Password '' -service dnsresolver -action UploadCustom `"Custom File`""
 $mandnsresolver.Rows.Add($row)
@@ -235,6 +252,7 @@ $row.'Help message' = ""
 $row.Example = "pfsense_api -server '' -username '' -Password '' -service portfwd -action delete 192.168.0.2 8443 10.0.0.1 443"
 $manportfwd.Rows.Add($row)
 
+
 $ManAlias = New-Object System.Data.DataTable
 $ManAlias.Columns.Add("Service","string") | Out-Null
 $ManAlias.Columns.Add("Action","string") | Out-Null
@@ -301,7 +319,7 @@ $row.Example = "pfsense_api -server '' -username '' -Password '' -service Alias 
 $ManAlias.Rows.Add($row)
 $row = $ManAlias.NewRow()
 $row.Service = "Alias"
-$row.Action = "addvalue"
+$row.Action = "Addvalue"
 $row.'Help message' = "add a value to a Alias"
 $row.Example = "pfsense_api -server '' -username '' -Password '' -service Alias -action addvalue name `"Description this must be between quotation marks`" Address Subnet(CIDR method) 'Subnet is only necessary if you add to a network alias'"
 $ManAlias.Rows.Add($row)
@@ -319,10 +337,52 @@ $row.Example = "pfsense_api -server '' -username '' -Password '' -service Alias 
 $ManAlias.Rows.Add($row)
 $row = $ManAlias.NewRow()
 $row.Service = "Alias"
-$row.Action = "deletevalue"
+$row.Action = "Deletevalue"
 $row.'Help message' = "delete a value from a Alias"
 $row.Example = "pfsense_api -server '' -username '' -Password '' -service Alias -action deletevalue name Value Subnet(CIDR method) 'Subnet is only necessary if you add to a network alias'"
 $ManAlias.Rows.Add($row)
 
 
-$manall = $man + $newline + $manroute + $newline + $manint + $newline + $manGateway + $newline + $mandnsresolver + $newline + $manportfwd + $newline + $ManAlias + $newline
+$manvip = New-Object System.Data.DataTable
+$manvip.Columns.Add("Service","string") | Out-Null
+$manvip.Columns.Add("Action","string") | Out-Null
+$manvip.Columns.Add("Help message","string") | Out-Null
+$manvip.Columns.Add("Example","string") | Out-Null
+$row = $manvip.NewRow()
+$row.Service = "Vip"
+$row.'Help message' = "to mange the Virtual IP's on the pfsense"
+$row.Example = ""
+$manvip.Rows.Add($row)
+$row = $manvip.NewRow()
+$row.Service = "Vip"
+$row.Action = "Print"
+$row.'Help message' = "print the Virtual IP's"
+$row.Example = "pfsense_api -server '' -username '' -Password '' -service VIP -action print"
+$manvip.Rows.Add($row)
+$row = $manvip.NewRow()
+$row.Service = "Vip"
+$row.Action = "Add"
+$row.'Help message' = "add a Virtual IP's 'For now only IP Alias'"
+$row.Example = "pfsense_api -server '' -username '' -Password '' -service VIP -action add interface Address Subnet(CIDR method) `"Description this must be between quotation marks`" "
+$manvip.Rows.Add($row)
+$row = $manvip.NewRow()
+$row.Service = ""
+$row.Action = ""
+$row.'Help message' = ""
+$row.Example = "pfsense_api -server '' -username '' -Password '' -service VIP -action add WAN 192.168.0.2 24 `"This is a new VIP`" "
+$manvip.Rows.Add($row)
+$row = $manvip.NewRow()
+$row.Service = "Vip"
+$row.Action = "Delete"
+$row.'Help message' = "Delete a Virtual IP"
+$row.Example = "pfsense_api -server '' -username '' -Password '' -service VIP -action delete Address"
+$manvip.Rows.Add($row)
+$row = $manvip.NewRow()
+$row.Service = ""
+$row.Action = ""
+$row.'Help message' = ""
+$row.Example = "pfsense_api -server '' -username '' -Password '' -service VIP -action delete 192.168.0.2 24"
+$manvip.Rows.Add($row)
+
+
+$manall = $man + $newline + $manroute + $newline + $manint + $newline + $manGateway + $newline + $mandnsresolver + $newline + $manportfwd + $newline + $ManAlias + $newline + $manvip + $newline
