@@ -1,17 +1,19 @@
 ﻿Param
     (
-    [Parameter(Mandatory=$true, Position=0,HelpMessage='The Server address')] [PSObject] $Server,
-    [Parameter(Mandatory=$true, Position=1,HelpMessage='The Username')] [PSObject] $Username,
-    [Parameter(Mandatory=$true, Position=2,HelpMessage='The Password')] [PSObject] $Password,
-    [Parameter(Mandatory=$false, Position=3,HelpMessage='The service you would like to talke to')] [PSObject] $service,
-    [Parameter(Mandatory=$false, Position=4,HelpMessage='The action you would like to do on the service')] [PSObject] $Action,
-    [Parameter(Mandatory=$false, Position=5,HelpMessage='The Argument you would like to give to the action')] [PSObject] $Argument1 = " ",
-    [Parameter(Mandatory=$false, Position=6,HelpMessage='The Argument you would like to give to the action')] [PSObject] $Argument2 = " ", 
-    [Parameter(Mandatory=$false, Position=7,HelpMessage='The Argument you would like to give to the action')] [PSObject] $Argument3 = " ", 
-    [Parameter(Mandatory=$false, Position=8,HelpMessage='The Argument you would like to give to the action')] [PSObject] $Argument4 = " ",
-    [Parameter(Mandatory=$false, Position=9,HelpMessage='The Argument you would like to give to the action')] [PSObject] $Argument5 = " ", 
-    [Parameter(Mandatory=$false, Position=10,HelpMessage='The Argument you would like to give to the action')] [PSObject] $Argument6 = " ", 
-    [Parameter(Mandatory=$false, Position=11,HelpMessage='The Argument you would like to give to the action')] [PSObject] $Argument7 = " ", 
+    [Parameter(Mandatory=$false, Position=0, HelpMessage='The pfSense address (either IP address or hostname)')]
+        [Alias('Host', 'IP', 'IPAddress')]
+        [String] $Server,
+    [Parameter(Mandatory=$false, Position=1, HelpMessage='The Username')] [String] $Username,
+    [Parameter(Mandatory=$false, Position=2, HelpMessage='The Password')] [String] $Password,
+    [Parameter(Mandatory=$false, Position=3, HelpMessage='The service you would like to talke to')] [PSObject] $service,
+    [Parameter(Mandatory=$false, Position=4, HelpMessage='The action you would like to do on the service')] [PSObject] $Action,
+    [Parameter(Mandatory=$false, Position=5, HelpMessage='The Argument you would like to give to the action')] [PSObject] $Argument1 = " ",
+    [Parameter(Mandatory=$false, Position=6, HelpMessage='The Argument you would like to give to the action')] [PSObject] $Argument2 = " ", 
+    [Parameter(Mandatory=$false, Position=7, HelpMessage='The Argument you would like to give to the action')] [PSObject] $Argument3 = " ", 
+    [Parameter(Mandatory=$false, Position=8, HelpMessage='The Argument you would like to give to the action')] [PSObject] $Argument4 = " ",
+    [Parameter(Mandatory=$false, Position=9, HelpMessage='The Argument you would like to give to the action')] [PSObject] $Argument5 = " ", 
+    [Parameter(Mandatory=$false, Position=10, HelpMessage='The Argument you would like to give to the action')] [PSObject] $Argument6 = " ", 
+    [Parameter(Mandatory=$false, Position=11, HelpMessage='The Argument you would like to give to the action')] [PSObject] $Argument7 = " ", 
 
     [Switch] $NoTest,
     [Switch] $NoTLS
@@ -821,6 +823,57 @@ Function delete_Vip{
     $dictPostData = @{apply="Apply+Changes"}
     Post-request -Connection @Connection -dictPostData $dictPostData -UriGetExtension "firewall_virtual_ip_edit.php" -UriPostExtension "firewall_virtual_ip.php"
 }
+
+# first things first: make sure we have a valid input for the hostname, username and password
+do{
+    If([string]::IsNullOrWhitespace($Server)) { 
+        $Server = (Read-Host -Prompt "What is the address (hostname or IP) of the pfSense?").Trim()
+    }
+
+    # first explicity try to cast to IP-address. if it succeeds, then its's apparently a valid IP.
+    try{ $Server = [IPAddress]$Server}
+         
+    Catch [System.InvalidCastException] {
+        # preserve the original input for use in possible error message
+        $ServerInput = $Server
+
+        # if the servername contains explicit https, the NoTLS parameter cannot be true
+        If($Server -match "^https://"){ 
+            $NoTLS = $false 
+            Write-Debug "Detected that user has input an uri which starts with https://, so force a TLS connection."
+
+        # same for if address starts with http://, this implies that the NoTLS argument has been set
+        } ElseIf ($Server -match "^http://") {
+            $NoTLS = $true
+            Write-Debug "Detected that user has input an uri which starts with http://, so force a plain (noTLS) connection."
+        }
+
+        # we will use the [system.uri] logic to check the validity, but to do it in a meaningful way we need to prepend http (or https) if not already
+        If(-not ($Server -match "^https?://")){
+            $Server = ("http://{0}" -f $Server)
+            Write-Debug ("For input validation, add 'http://' to the server. Result: {0}" -f $Server)
+        }
+
+        # The $ServerURI (and thus also $ServerURI.Authority) will be null if the URI is invalid. It will trigger the while condition to ask again. 
+        # If the $Server is a valid hostname, it will contain the hostname and portnumber (if different from http:80 or https:443)
+        $ServerURI = $null
+        [void][System.URI]::TryCreate($Server, "Absolute", [ref]$ServerURI) 
+        $Server = $ServerURI.Authority
+        
+        If(-not $ServerURI){
+            Write-Host ("It seems like '{0}' is neither an IP-address nor a valid hostname, please try again." -f $ServerInput) -ForegroundColor Red
+
+        } else {
+            Write-Debug ("Parsed server address to: {0}" -f $ServerURI)
+            Write-Debug ("Will use this address for the connection: {0}" -f $Server)
+        }
+
+    # something unexpected happened, let's assume it's the invalid input and ask the user again
+    } Catch { $Server = $null }
+
+
+} while([string]::IsNullOrWhitespace($Server))
+
 
 
 $DefaulkCred  = New-Object System.Management.Automation.PSCredential ($Username, $(ConvertTo-SecureString -string $password -AsPlainText -Force))
