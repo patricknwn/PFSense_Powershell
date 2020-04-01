@@ -95,9 +95,7 @@ Function Connect-pfSense{
 
 Function Post-request{
     <#
-    This Function does the actual upload to the website of the pfsense.
-    it can do a normal upload our a multipart form (which is used for the backup and restore page)
-    to use the multipart mode use the switch -Multiform
+    This Function uploads data to the pfsensen, mostly used for logout
     #>
     Param
     (
@@ -133,37 +131,22 @@ Function Post-request{
 }
 
 
-# ToDo: this can be much shorter and smoother
-
 Function download-xml{
     <#
-    This Function changes the admin password
+    Download's the full xml config from the pfsense
     With the NoTLS switch port 80 can be used instead of 443
     #>
     Param(
         [Parameter(Mandatory=$true, Position=0,HelpMessage='Valid/active websession to server')] [PSObject] $Connection)
-    $UriGetExtension = "diag_backup.php" 
-    $UriPostExtension = "diag_backup.php"
-    $dictPostData = @{
-        backuparea = ""
-        donotbackuprrd = "yes"
-        encrypt_password = "" 
-        download = "Download configuration as XML"
-        restorearea = ""
-        conffile = "(binary)"
-        decrypt_password = ""
-    }
     [bool] $NoTLS = $Connection.dictOptions.NoTLS
     [Microsoft.PowerShell.Commands.WebRequestSession] $webSession = $Connection.pfWebSession
-    $uri = 'https://{0}/{1}' -f $Server, $UriGetExtension
+    $uri = 'https://{0}/diag_backup.php' -f $Server
     If ($NoTLS) 
     {
         $uri = $uri -Replace "^https:",'http:'
         Write-debug -Message 'WARNING NO TLS SECURTIY!!! '
     }
     $request = Invoke-WebRequest -Uri $uri -Method Get -WebSession $webSession
-    $dictPostData.add("__csrf_magic","$($request.InputFields[0].Value)")
-    $uri = $uri -replace $UriGetExtension,$UriPostExtension
     Try
     {
         $boundry = "-----" + [System.Guid]::NewGuid().ToString()
@@ -172,36 +155,36 @@ Function download-xml{
         "--$boundry",
         "Content-Disposition: form-data; name=`"__csrf_magic`"",
         '',
-        $dictPostData.item("__csrf_magic"),
+        $($request.InputFields[0].Value),
         "--$boundry",
         "Content-Disposition: form-data; name=`"backuparea`"",
         '',
-        $dictPostData.item("backuparea"),
+        '',
         "--$boundry",
         "Content-Disposition: form-data; name=`"donotbackuprrd`"",
         '',
-        $dictPostData.item("donotbackuprrd"),
+        'Yes',
         "--$boundry",
         "Content-Disposition: form-data; name=`"encrypt_password`"",
         '',
-        $dictPostData.item("encrypt_password"),
+        '',
         "--$boundry",
         "Content-Disposition: form-data; name=`"download`"",
         '',
-        $dictPostData.item("download"),
+        'Download configuration as XML',
         "--$boundry",
         "Content-Disposition: form-data; name=`"restorearea`"",
         '',
-        $dictPostData.item("restorearea"),
+        '',
         "--$boundry",
-        "Content-Disposition: form-data; name=`"conffile`"; filename=`"$($dictPostData.item("Filename"))`"",
+        "Content-Disposition: form-data; name=`"conffile`"; filename=`"`"",
         "Content-Type: application/octet-stream",
         '',
-        $dictPostData.item("conffile"),
+        '(binary)',
         "--$boundry",
         "Content-Disposition: form-data; name=`"decrypt_password`"",
         '',
-        $dictPostData.item("decrypt_password"),
+        '',
         "--$boundry--"
         ) 
         $bodyLines = $bodyLines -join $LF
@@ -222,7 +205,7 @@ Function download-xml{
 
 Function upload-xml{
     <#
-    This Function changes the admin password
+    Uploads a XML file to the pfsense
     With the NoTLS switch port 80 can be used instead of 443
     #>
     Param(
@@ -347,8 +330,11 @@ Function Printe_route{
     $Data = download-xml -Connection @Connection
     [xml]$XML_Data = $Data.RawContent.Substring($($Data.RawContent.IndexOf("<")))
     Write-Host "Static routes are:"
-    $XML_Data.pfsense.staticroutes.route
-
+#    $XML_Data.pfsense.staticroutes.route
+    $CSV_output = ConvertTo-Csv -InputObject $XML_Data.pfsense.staticroutes.route
+    $CSV_output.GetType()
+    $CSV_output | Select -Skip 1 | %{"{0}" -f $_}
+#    $CSV_output | Select -Skip 1 | Format-Table -Property network
 }
 
 
@@ -356,9 +342,9 @@ Function Add_route{
 # api_through_json.ps1 -server '192.168.0.1' -username 'admin' -Password 'pfsense' -service route -Action add 192.168.11.0/22 WAN_DHCP "This is another test" -NoTLS -NoTest
     Param(
     [Parameter(Mandatory=$true, Position=0,HelpMessage='Valid/active websession to server')] [PSObject] $Connection,   
-    [Parameter(Mandatory=$true, Position=1,HelpMessage='The Argument you would like to give to the action')] [PSObject] $Argument1,
-    [Parameter(Mandatory=$true, Position=2,HelpMessage='The Argument you would like to give to the action')] [PSObject] $Argument2,
-    [Parameter(Mandatory=$true, Position=3,HelpMessage='The Argument you would like to give to the action')] [PSObject] $Argument3)
+    [Parameter(Mandatory=$true, Position=1,HelpMessage='Network/subnet')] [PSObject] $Argument1,
+    [Parameter(Mandatory=$true, Position=2,HelpMessage='Gateway')] [PSObject] $Argument2,
+    [Parameter(Mandatory=$true, Position=3,HelpMessage='Discription')] [PSObject] $Argument3)
     $Data = download-xml -Connection @Connection
     $XML_Data = [xml]$Data.RawContent.Substring($Data.RawContent.IndexOf("<"))
 
@@ -442,8 +428,8 @@ Function print_interface {
     $Data = download-xml -Connection @Connection
     [xml]$XML_Data = $Data.RawContent.Substring($($Data.RawContent.IndexOf("<")))
     Write-Host "interfaces are:"
-    $XML_Data.pfsense.interfaces.ChildNodes.name | %{"{0} {1} {2} {3}" -f `        $XML_Data.pfsense.interfaces.$_.name,`        $XML_Data.pfsense.interfaces.$_.descr.'#cdata-section',`
-        $XML_Data.pfsense.interfaces.$_.ipaddr,`        $XML_Data.pfsense.interfaces.$_.subnet }
+    $XML_Data.pfsense.interfaces.ChildNodes.name | %{"Internal name: {0} UserName: {1} IPv4: {2}/{3} IPv6: {4}/{5} Gateway: {6}" -f `        $XML_Data.pfsense.interfaces.$_.name,`        $XML_Data.pfsense.interfaces.$_.descr.'#cdata-section',`
+        $XML_Data.pfsense.interfaces.$_.ipaddr,`        $XML_Data.pfsense.interfaces.$_.subnet,        $XML_Data.pfsense.interfaces.$_.ipaddrv6,`        $XML_Data.pfsense.interfaces.$_.subnetv6,`        $XML_Data.pfsense.interfaces.$_.gateway }
     
 }
 
@@ -452,12 +438,36 @@ Function print_Gateway{
     Param([Parameter(Mandatory=$true, Position=0,HelpMessage='Valid/active websession to server')][PSObject]$Connection) 
     $Data = download-xml -Connection @Connection
     [xml]$XML_Data = $Data.RawContent.Substring($($Data.RawContent.IndexOf("<")))
-    Write-Host "Static routes are:"
-    $XML_Data.pfsense
+    Write-Host "DHCP Gateway's are:"
+    $XML_Data.pfsense.interfaces.ChildNodes.name | %{if ($XML_Data.pfsense.interfaces.$_.ipaddr -eq "dhcp"){"{0}_DHCP" -f $XML_Data.pfsense.interfaces.$_.name}}
+    Write-Host "configured Gateway's are:"
+    $XML_Data.pfsense.gateways.gateway_item
+    Write-Host "Default Gateway is:"
+    $XML_Data.pfsense.gateways.defaultgw4
+    $XML_Data.pfsense.gateways.defaultgw6
 }
+
+
+Function add_Gateway{
+#pfsense_api -server '' -username '' -Password '' -service Gateway -action add new_gateway 192.168.0.2 192.168.0.2 WAN "Description"
+    Param(
+    [Parameter(Mandatory=$true, Position=0,HelpMessage='Valid/active websession to server')] [PSObject] $Connection,   
+    [Parameter(Mandatory=$true, Position=1,HelpMessage='Name')] [PSObject] $Argument1,
+    [Parameter(Mandatory=$true, Position=1,HelpMessage='Network/subnet')] [PSObject] $Argument2,
+    [Parameter(Mandatory=$true, Position=1,HelpMessage='Monitor address')] [PSObject] $Argument3,
+    [Parameter(Mandatory=$true, Position=1,HelpMessage='Interface')] [PSObject] $Argument4,
+    [Parameter(Mandatory=$true, Position=1,HelpMessage='Description')] [PSObject] $Argument5)
+}
+
+
+
+
+
 
 # $server = "192.168.0.1" ; $Username = "admin" ; $password = "pfsense"
 $DefaulkCred  = New-Object System.Management.Automation.PSCredential ($Username, $(ConvertTo-SecureString -string $password -AsPlainText -Force))
+
+# $Connection = Connect-pfSense -Server $Server -Credentials $DefaulkCred -NoTLS
 
 
 if (-not $service -or $service -eq "Help" -or $service -eq "H"){$HelpMessageheader
