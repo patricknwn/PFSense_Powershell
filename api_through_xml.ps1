@@ -79,13 +79,13 @@ Function Connect-pfSense{
             $uri = $uri -Replace "^https:",'http:'
             Write-debug -Message 'WARNING NO TLS SECURTIY!!! '
         }
-    $request = Invoke-WebRequest -Uri $uri
+    $request = Invoke-WebRequest -UseBasicParsing -Uri $uri
     $webCredential = @{login='Login'
         usernamefld=$Credentials.GetNetworkCredential().UserName
         passwordfld=$Credentials.GetNetworkCredential().Password
         __csrf_magic=$($request.InputFields[0].Value)
     }
-    $login = Invoke-WebRequest -Uri $uri -Body $webCredential -Method Post -SessionVariable pfWebSession | Out-Null
+    $login = Invoke-WebRequest -UseBasicParsing -Uri $uri -Body $webCredential -Method Post -SessionVariable pfWebSession | Out-Null
     return [pscustomobject] @{     
         'pfWebSession' = $pfWebSession
         'dictOptions' = $dictOptions
@@ -112,12 +112,12 @@ Function Post-request{
         $uri = $uri -Replace "^https:",'http:'
         Write-debug -Message 'WARNING NO TLS SECURTIY!!! '
     }
-    $request = Invoke-WebRequest -Uri $uri -Method Get -WebSession $webSession
+    $request = Invoke-WebRequest -UseBasicParsing -Uri $uri -Method Get -WebSession $webSession
     $dictPostData.add("__csrf_magic","$($request.InputFields[0].Value)")
     $uri = $uri -replace $UriGetExtension,$UriPostExtension
     Try
     {
-        $rawRet = Invoke-WebRequest -Uri $uri -Method Post -Body $dictPostData -WebSession $webSession -EA Stop
+        $rawRet = Invoke-WebRequest -UseBasicParsing -Uri $uri -Method Post -Body $dictPostData -WebSession $webSession -EA Stop
     }
     Catch
     {
@@ -146,7 +146,7 @@ Function download-xml{
         $uri = $uri -Replace "^https:",'http:'
         Write-debug -Message 'WARNING NO TLS SECURTIY!!! '
     }
-    $request = Invoke-WebRequest -Uri $uri -Method Get -WebSession $webSession
+    $request = Invoke-WebRequest -UseBasicParsing -Uri $uri -Method Get -WebSession $webSession
     Try
     {
         $boundry = "-----" + [System.Guid]::NewGuid().ToString()
@@ -188,7 +188,7 @@ Function download-xml{
         "--$boundry--"
         ) 
         $bodyLines = $bodyLines -join $LF
-        $rawRet = Invoke-WebRequest -Uri $uri -Method Post -Body $bodyLines -WebSession $webSession -ContentType "multipart/form-data; boundary=$boundry" 
+        $rawRet = Invoke-WebRequest -UseBasicParsing -Uri $uri -Method Post -Body $bodyLines -WebSession $webSession -ContentType "multipart/form-data; boundary=$boundry" 
     }
     Catch
     {
@@ -221,7 +221,7 @@ Function upload-xml{
         $uri = $uri -Replace "^https:",'http:'
         Write-debug -Message 'WARNING NO TLS SECURTIY!!! '
     }
-    $request = Invoke-WebRequest -Uri $uri -Method Get -WebSession $webSession
+    $request = Invoke-WebRequest -UseBasicParsing -Uri $uri -Method Get -WebSession $webSession
     $dictPostData.add("__csrf_magic","$($request.InputFields[0].Value)")
     $uri = $uri -replace $UriGetExtension,$UriPostExtension
     Try
@@ -267,7 +267,7 @@ Function upload-xml{
         ) 
         $bodyLinesjoind = $bodyLines -join $LF
 #       $uri = "http://192.168.0.1/diag_backup.php"
-        $rawRet = Invoke-WebRequest -Uri $uri -Method Post -Body $bodyLinesjoind -WebSession $webSession -ContentType "multipart/form-data; boundary=$boundry" 
+        $rawRet = Invoke-WebRequest -UseBasicParsing -Uri $uri -Method Post -Body $bodyLinesjoind -WebSession $webSession -ContentType "multipart/form-data; boundary=$boundry" 
     }
     Catch
     {
@@ -299,7 +299,7 @@ Function Get-Request{
         $uri = $uri -Replace "^https:",'http:'
         Write-debug -Message 'WARNING NO TLS SECURTIY!!! '
     }
-    $request = Invoke-WebRequest -Uri $uri -Method Get -WebSession $webSession
+    $request = Invoke-WebRequest -UseBasicParsing -Uri $uri -Method Get -WebSession $webSession
     return $request
 }
 
