@@ -48,24 +48,24 @@ $row = $manroute.NewRow()
 $row.Service = "Route"
 $row.Action = "Add"
 $row.'Help message' = "Add a static route"
-$row.Example = "pfsense_api -server '' -username '' -Password '' -service Route -action Add network_addr Subnet(CIDR method) Gateway_name `"Description this must be between quotation marks`""
+$row.Example = "pfsense_api -server '' -username '' -Password '' -service Route -action Add network_addr/Subnet Gateway_name `"Description this must be between quotation marks`""
 $manroute.Rows.Add($row)
 $row = $manroute.NewRow()
 $row.Service = ""
 $row.Action = ""
 $row.'Help message' = ""
-$row.Example = "pfsense_api -server '' -username '' -Password '' -service Route -action Add 192.168.0.0 24 WAN_DHCP `"Description this must be between quotation marks`""
+$row.Example = "pfsense_api -server '' -username '' -Password '' -service Route -action Add 192.168.0.0/24 WAN_DHCP `"Description this must be between quotation marks`""
 $manroute.Rows.Add($row)
 $row = $manroute.NewRow()
 $row.Service = "Route"
 $row.Action = "Delete"
 $row.'Help message' = "Delete a static route"
-$row.Example = "pfsense_api -server '' -username '' -Password '' -service Route -action Delete network_addr Subnet(CIDR method) Gateway_name"
+$row.Example = "pfsense_api -server '' -username '' -Password '' -service Route -action Delete network_addr/Subnet(CIDR method) Gateway_name"
 $manroute.Rows.Add($row)
 $row = $manroute.NewRow()
 $row.Service = ""
 $row.'Help message' = ""
-$row.Example = "pfsense_api -server '' -username '' -Password '' -service Route -action Delete 192.168.0.0 24 WAN_DHCP"
+$row.Example = "pfsense_api -server '' -username '' -Password '' -service Route -action Delete 192.168.0.0/24 WAN_DHCP"
 $manroute.Rows.Add($row)
 
 
@@ -385,4 +385,42 @@ $row.Example = "pfsense_api -server '' -username '' -Password '' -service VIP -a
 $manvip.Rows.Add($row)
 
 
-$manall = $man + $newline + $manroute + $newline + $manint + $newline + $manGateway + $newline + $mandnsresolver + $newline + $manportfwd + $newline + $ManAlias + $newline + $manvip + $newline
+$ManFirewall = New-Object System.Data.DataTable
+$ManFirewall.Columns.Add("Service","string") | Out-Null
+$ManFirewall.Columns.Add("Action","string") | Out-Null
+$ManFirewall.Columns.Add("Help message","string") | Out-Null
+$ManFirewall.Columns.Add("Example","string") | Out-Null
+$row = $ManFirewall.NewRow()
+$row.Service = "Firewall"
+$row.'Help message' = "to mange the Firewall on the pfsense"
+$row.Action = ""
+$row.Example = ""
+$ManFirewall.Rows.Add($row)
+$row = $ManFirewall.NewRow()
+$row.Service = "Firewall"
+$row.Action = "Print"
+$row.'Help message' = "Print the firewall rules"
+$row.Example = "pfsense_api -server '' -username '' -Password '' -service Firewall -action print"
+$ManFirewall.Rows.Add($row)
+$row = $ManFirewall.NewRow()
+$row.Service = "Firewall"
+$row.Action = "Print"
+$row.'Help message' = "Print the firewall rules"
+$row.Example = "pfsense_api -server '' -username '' -Password '' -service Firewall -action add top/bottom interface pass/drop/reject Protocol SourceType Source  `"If SourceType is network - Subnet`" 'SourcePort, if none `" `"' DestType Dest `"If DestType is network - Subnet`" DestPort `"Description this must be between quotation marks`" Log `"Yes if logging needs to be enabled`""
+$ManFirewall.Rows.Add($row)
+$row = $ManFirewall.NewRow()
+$row.Service = "Firewall"
+$row.Action = "Print"
+$row.'Help message' = "Print the firewall rules"
+$row.Example = "pfsense_api -server '' -username '' -Password '' -service Firewall -action add top wan pass tcp network 10.0.0.0 24 `" `" network 192.168.0.0 24 443 `"to allow traffic from 10.0.0.0/24 to 192.168.0.0/24 port 443`" Yes"
+$ManFirewall.Rows.Add($row)
+
+
+
+
+
+
+
+
+
+$manall = $man + $newline + $manroute + $newline + $manint + $newline + $manGateway + $newline + $mandnsresolver + $newline + $manportfwd + $newline + $ManAlias + $newline + $manvip + $newline + $ManFirewall + $newline
