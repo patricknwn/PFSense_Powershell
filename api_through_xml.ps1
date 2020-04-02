@@ -329,12 +329,22 @@ Function Printe_route{
     Param([Parameter(Mandatory=$true, Position=0,HelpMessage='Valid/active websession to server')][PSObject]$Connection) 
     $Data = download-xml -Connection @Connection
     [xml]$XML_Data = $Data.RawContent.Substring($($Data.RawContent.IndexOf("<")))
-    Write-Host "Static routes are:"
-#    $XML_Data.pfsense.staticroutes.route
-    $CSV_output = ConvertTo-Csv -InputObject $XML_Data.pfsense.staticroutes.route
-    $CSV_output.GetType()
-    $CSV_output | Select -Skip 1 | %{"{0}" -f $_}
-#    $CSV_output | Select -Skip 1 | Format-Table -Property network
+    Write-Host "Static routes are:" -BackgroundColor White -ForegroundColor Black
+    Write-Host "Network : Gateway : Description`n`r" -BackgroundColor White -ForegroundColor Black
+    $routeindex = 0
+    try{
+        if($XML_Data.pfsense.staticroutes.route[$routeindex]){
+            while($XML_Data.pfsense.staticroutes.route[$routeindex]){
+                "{0} : {1} : {2}" -f`
+                $XML_Data.pfsense.staticroutes.route[$routeindex].Network,`
+                $XML_Data.pfsense.staticroutes.route[$routeindex].gateway,`
+                $XML_Data.pfsense.staticroutes.route[$routeindex].descr.'#cdata-section'
+                $routeindex++
+            }
+        }
+        else{"{0} : {1} : {2}" -f $XML_Data.pfsense.staticroutes.route.Network,$XML_Data.pfsense.staticroutes.route.gateway,$XML_Data.pfsense.staticroutes.route.descr.'#cdata-section'}
+    }catch{Write-host "No Static routes Found"}
+
 }
 
 
@@ -392,6 +402,7 @@ Function Add_route{
 }
 
 
+# ToDo: Does not delete the last static route
 Function delete_route{
 #pfsense_api -server '' -username '' -Password '' -service Route -action Delete "192.168.0.0/24" WAN_DHCP 
     Param(
@@ -402,14 +413,9 @@ Function delete_route{
     $XML_Data = [xml]$Data.RawContent.Substring($Data.RawContent.IndexOf("<"))
     $select_xml = $XML_Data.pfsense.staticroutes
     $xml_upload = New-Object -TypeName xml
-    $xml_upload.AppendChild($xml_upload.ImportNode($select_xml,$true))
-
-    #
+    $xml_upload.AppendChild($xml_upload.ImportNode($select_xml,$true)) | out-null
     ($xml_upload.staticroutes.route | Where-Object {($_.network -contains $("{0}" -f $Argument1)) -and ($_.gateway -contains $("{0}" -f $Argument2) )}) | ForEach-Object {[void]$_.ParentNode.RemoveChild($_)}
-    # ToDo: check if enterd value's excist
-    # if($xml_upload -eq $xml_check){Write-Warning "could not find: $Argument1 on gateway: $Argument2"; exit}
     $xml_string = convertxml -xml $xml_upload
-    $xml_string
     $dictPostData = @{
         backuparea = ""
         donotbackuprrd = "Yes"
@@ -423,14 +429,15 @@ Function delete_route{
 }
 
 
+# ToDo: no / symbol if dhcp
 Function print_interface {
     Param([Parameter(Mandatory=$true, Position=0,HelpMessage='Valid/active websession to server')][PSObject]$Connection) 
     $Data = download-xml -Connection @Connection
     [xml]$XML_Data = $Data.RawContent.Substring($($Data.RawContent.IndexOf("<")))
-    Write-Host "interfaces are:"
-    $XML_Data.pfsense.interfaces.ChildNodes.name | %{"Internal name: {0} UserName: {1} IPv4: {2}/{3} IPv6: {4}/{5} Gateway: {6}" -f `        $XML_Data.pfsense.interfaces.$_.name,`        $XML_Data.pfsense.interfaces.$_.descr.'#cdata-section',`
+    Write-Host "interfaces are:" -BackgroundColor White -ForegroundColor Black
+    Write-Host "Internal name : Userdifend name :  IPv4  :  IPv6  : Gateway`n`r" -BackgroundColor White -ForegroundColor Black
+    $XML_Data.pfsense.interfaces.ChildNodes.name | %{"{0} : {1} : {2}/{3} : {4}/{5} : {6}" -f `        $XML_Data.pfsense.interfaces.$_.name,`        $XML_Data.pfsense.interfaces.$_.descr.'#cdata-section',`
         $XML_Data.pfsense.interfaces.$_.ipaddr,`        $XML_Data.pfsense.interfaces.$_.subnet,        $XML_Data.pfsense.interfaces.$_.ipaddrv6,`        $XML_Data.pfsense.interfaces.$_.subnetv6,`        $XML_Data.pfsense.interfaces.$_.gateway }
-    
 }
 
 
@@ -438,29 +445,214 @@ Function print_Gateway{
     Param([Parameter(Mandatory=$true, Position=0,HelpMessage='Valid/active websession to server')][PSObject]$Connection) 
     $Data = download-xml -Connection @Connection
     [xml]$XML_Data = $Data.RawContent.Substring($($Data.RawContent.IndexOf("<")))
-    Write-Host "DHCP Gateway's are:"
+    Write-Host "DHCP Gateway's are:" -BackgroundColor White -ForegroundColor Black
     $XML_Data.pfsense.interfaces.ChildNodes.name | %{if ($XML_Data.pfsense.interfaces.$_.ipaddr -eq "dhcp"){"{0}_DHCP" -f $XML_Data.pfsense.interfaces.$_.name}}
-    Write-Host "configured Gateway's are:"
-    $XML_Data.pfsense.gateways.gateway_item
-    Write-Host "Default Gateway is:"
-    $XML_Data.pfsense.gateways.defaultgw4
-    $XML_Data.pfsense.gateways.defaultgw6
+    Write-Host "`n`rconfigured Gateway's are:" -BackgroundColor White -ForegroundColor Black
+    Write-Host "Name : Interface : Gateway IP : Monitor IP : Description`n`r" -BackgroundColor White -ForegroundColor Black
+    try{
+        $gatewayindex = 0
+        if($XML_Data.pfsense.gateways.gateway_item[$gatewayindex]){
+            while($XML_Data.pfsense.gateways.gateway_item[$gatewayindex]){
+                "{0} : {1} : {2} : {3} : {4}" -f `
+                $XML_Data.pfsense.gateways.gateway_item[$gatewayindex].name,`
+                $(if($XML_Data.pfsense.interfaces.$($XML_Data.pfsense.gateways.gateway_item[$gatewayindex].interface).SelectSingleNode("descr")){$XML_Data.pfsense.interfaces.$($XML_Data.pfsense.gateways.gateway_item[$gatewayindex].interface).descr.'#cdata-section'}else{$XML_Data.pfsense.gateways.gateway_item[$gatewayindex].interface}),`
+                $XML_Data.pfsense.gateways.gateway_item[$gatewayindex].gateway,`
+                $(if($XML_Data.pfsense.gateways.gateway_item[$gatewayindex].SelectSingleNode("monitor")){$XML_Data.pfsense.gateways.gateway_item[$gatewayindex].monitor}else{$XML_Data.pfsense.gateways.gateway_item[$gatewayindex].gateway}),`
+                $XML_Data.pfsense.gateways.gateway_item[$gatewayindex].descr.'#cdata-section'
+                $gatewayindex++
+            }
+        }
+        else{"{0} : {1} : {2} : {3} : {4}" -f `
+            $XML_Data.pfsense.gateways.gateway_item.name,`
+            $XML_Data.pfsense.interfaces.$($XML_Data.pfsense.gateways.gateway_item.interface).descr.'#cdata-section',` # ToDo: if default name use default
+            $(if($XML_Data.pfsense.interfaces.$($XML_Data.pfsense.gateways.gateway_item.interface).SelectSingleNode("descr")){$XML_Data.pfsense.interfaces.$($XML_Data.pfsense.gateways.gateway_item.interface).descr.'#cdata-section'}else{$XML_Data.pfsense.gateways.gateway_item.interface}),`
+            $XML_Data.pfsense.gateways.gateway_item.gateway,`
+            $(if($XML_Data.pfsense.gateways.gateway_item.SelectSingleNode("monitor")){$XML_Data.pfsense.gateways.gateway_item.monitor}else{$XML_Data.pfsense.gateways.gateway_item.gateway}),`
+            $XML_Data.pfsense.gateways.gateway_item.descr.'#cdata-section'}
+    }catch{Write-Host "No gateway's configured by user"}
+    Write-Host "`n`rDefault Gateway is:" -BackgroundColor White -ForegroundColor Black
+    try{
+        if($XML_Data.pfsense.gateways.SelectSingleNode("defaultgw4" -ne "")){"IPv4 Gateway: {0}" -f $XML_Data.pfsense.gateways.defaultgw4}
+        elseif($XML_Data.pfsense.gateways.defaultgw4 -eq "-"){write-host "IPv4 Gateway: None"}
+        else{write-host "IPv4 Gateway: Automatic"}}
+    catch{write-host "IPv4 Gateway: Automatic"}
+    try{
+        if($XML_Data.pfsense.gateways.SelectSingleNode("defaultgw6" -ne "")){"IPv6 Gateway: {0}" -f $XML_Data.pfsense.gateways.defaultgw6}
+        elseif($XML_Data.pfsense.gateways.defaultgw6 -eq "-"){write-host "IPv6 Gateway: None"}
+        else{write-host "IPv6 Gateway: Automatic"}}
+    catch{write-host "IPv6 Gateway: Automatic"}
 }
 
 
-Function add_Gateway{
-#pfsense_api -server '' -username '' -Password '' -service Gateway -action add new_gateway 192.168.0.2 192.168.0.2 WAN "Description"
-    Param(
-    [Parameter(Mandatory=$true, Position=0,HelpMessage='Valid/active websession to server')] [PSObject] $Connection,   
-    [Parameter(Mandatory=$true, Position=1,HelpMessage='Name')] [PSObject] $Argument1,
-    [Parameter(Mandatory=$true, Position=1,HelpMessage='Network/subnet')] [PSObject] $Argument2,
-    [Parameter(Mandatory=$true, Position=1,HelpMessage='Monitor address')] [PSObject] $Argument3,
-    [Parameter(Mandatory=$true, Position=1,HelpMessage='Interface')] [PSObject] $Argument4,
-    [Parameter(Mandatory=$true, Position=1,HelpMessage='Description')] [PSObject] $Argument5)
+
+Function add_Gateway{}
+
+
+# ToDo: convert local interface name's to user defined interface name
+Function print_dnsresolver{
+    Param([Parameter(Mandatory=$true, Position=0,HelpMessage='Valid/active websession to server')][PSObject]$Connection) 
+    $Data = download-xml -Connection @Connection
+    [xml]$XML_Data = $Data.RawContent.Substring($($Data.RawContent.IndexOf("<")))
+    Write-Host "Dns Server settings are:" -BackgroundColor White -ForegroundColor Black
+    "Enabled: {0} | Active interfaces: {1} | Outgoing interfaces: {2} | Port: {3} | Sslport: {4} | dnssec: {5}" -f `
+    $(if($XML_Data.pfsense.unbound.SelectSingleNode("enable")){"Yes"}Else{"No"}),`
+    $(if($XML_Data.pfsense.unbound.active_interface -eq ""){"all"}else{$XML_Data.pfsense.unbound.active_interface}),`
+    $(if($XML_Data.pfsense.unbound.outgoing_interface -eq ""){"all"}else{$XML_Data.pfsense.unbound.outgoing_interface}),`
+    $(if(($XML_Data.pfsense.unbound.port -eq "") -or -not ($XML_Data.pfsense.unbound.SelectSingleNode("port"))){"53"}else{$XML_Data.pfsense.unbound.port}),`
+    $(if(($XML_Data.pfsense.unbound.sslport -eq "") -or -not ($XML_Data.pfsense.unbound.SelectSingleNode("sslport"))){"853"}else{$XML_Data.pfsense.unbound.sslport}),`
+    $(if($XML_Data.pfsense.unbound.SelectSingleNode("dnssec")){"Yes"}Else{"No"})
+    if($XML_Data.pfsense.unbound.SelectSingleNode("hosts")){
+        $hostindex = 0
+        if($XML_Data.pfsense.unbound.hosts[$hostindex]){
+            Write-Host "`n`rHost override's:" -BackgroundColor White -ForegroundColor Black
+            Write-Host "Host : Domain : IPaddress : Description : Alias Hostname : Alias Domain : Alias description" -BackgroundColor White -ForegroundColor Black
+            while($XML_Data.pfsense.unbound.hosts[$hostindex].host){
+                "`n`r{0} : {1} : {2} : {3}" -f `
+                $($XML_Data.pfsense.unbound.hosts[$hostindex].host),`
+                $($XML_Data.pfsense.unbound.hosts[$hostindex].domain),`
+                $($XML_Data.pfsense.unbound.hosts[$hostindex].ip),`
+                $($XML_Data.pfsense.unbound.hosts[$hostindex].descr.'#cdata-section')
+                try{
+                if($XML_Data.pfsense.unbound.hosts[$hostindex].aliases.SelectSingleNode("item")){
+                    $aliasindex = 0
+                    if($XML_Data.pfsense.unbound.hosts[$hostindex].aliases.item[$aliasindex]){
+                        while($XML_Data.pfsense.unbound.hosts[$hostindex].aliases.item[$aliasindex]){
+                            "{0} : {1} : {2} : {3} : {4} : {5} : {6}" -f `
+                            $($XML_Data.pfsense.unbound.hosts[$hostindex].host),`
+                            $($XML_Data.pfsense.unbound.hosts[$hostindex].domain),`
+                            $($XML_Data.pfsense.unbound.hosts[$hostindex].ip),`
+                            $($XML_Data.pfsense.unbound.hosts[$hostindex].descr.'#cdata-section'),`
+                            $XML_Data.pfsense.unbound.hosts[$hostindex].aliases.item[$aliasindex].host,`
+                            $XML_Data.pfsense.unbound.hosts[$hostindex].aliases.item[$aliasindex].domain,`
+                            $XML_Data.pfsense.unbound.hosts[$hostindex].aliases.item[$aliasindex].description.'#cdata-section'
+                            $aliasindex++
+                        }
+                    }
+                    else{
+                        "{0} : {1} : {2} : {3} : {4} : {5} : {6}" -f `
+                        $($XML_Data.pfsense.unbound.hosts[$hostindex].host),`
+                        $($XML_Data.pfsense.unbound.hosts[$hostindex].domain),`
+                        $($XML_Data.pfsense.unbound.hosts[$hostindex].ip),`
+                        $($XML_Data.pfsense.unbound.hosts[$hostindex].descr.'#cdata-section'),`
+                        $XML_Data.pfsense.unbound.hosts[$hostindex].aliases.item.host,`
+                        $XML_Data.pfsense.unbound.hosts[$hostindex].aliases.item.domain,`
+                        $XML_Data.pfsense.unbound.hosts[$hostindex].aliases.item.description.'#cdata-section'            
+                    }     
+                }else{}
+                }catch{}
+
+                $hostindex++
+            }
+        }else{
+            Write-Host "`n`rHost override's:" -BackgroundColor White -ForegroundColor Black
+            Write-Host "Host : Domain : IPaddress : Description : Alias Hostname : Alias Domain : Alias description" -BackgroundColor White -ForegroundColor Black
+            "{0} : {1} : {2} : {3}" -f `
+            $($XML_Data.pfsense.unbound.hosts.host),`
+            $($XML_Data.pfsense.unbound.hosts.domain),`
+            $($XML_Data.pfsense.unbound.hosts.ip),`
+            $($XML_Data.pfsense.unbound.hosts.descr.'#cdata-section')
+            if($XML_Data.pfsense.unbound.hosts.SelectSingleNode("aliases")){
+                $aliasindex = 0
+                try{
+                    if($XML_Data.pfsense.unbound.hosts.aliases.item[$aliasindex]){
+                        while($XML_Data.pfsense.unbound.hosts.aliases.item[$aliasindex]){
+                            "{0} : {1} : {2} : {3} : {4} : {5} : {6}" -f `
+                            $($XML_Data.pfsense.unbound.hosts.host),`
+                            $($XML_Data.pfsense.unbound.hosts.domain),`
+                            $($XML_Data.pfsense.unbound.hosts.ip),`
+                            $($XML_Data.pfsense.unbound.hosts.descr.'#cdata-section'),`
+                            $XML_Data.pfsense.unbound.hosts.aliases.item[$aliasindex].host,`
+                            $XML_Data.pfsense.unbound.hosts.aliases.item[$aliasindex].domain,`
+                            $XML_Data.pfsense.unbound.hosts.aliases.item[$aliasindex].description.'#cdata-section'
+                            $aliasindex++
+                        }
+                    }
+                    else{
+                        "{0} : {1} : {2} : {3} : {4} : {5} : {6}" -f `
+                        $($XML_Data.pfsense.unbound.hosts.host),`
+                        $($XML_Data.pfsense.unbound.hosts.domain),`
+                        $($XML_Data.pfsense.unbound.hosts.ip),`
+                        $($XML_Data.pfsense.unbound.hosts.descr.'#cdata-section'),`
+                        $XML_Data.pfsense.unbound.hosts.aliases.item.host,`
+                        $XML_Data.pfsense.unbound.hosts.aliases.item.domain,`
+                        $XML_Data.pfsense.unbound.hosts.aliases.item.description.'#cdata-section'           
+                    }
+                }catch{}    
+            }
+        }
+    }
+    if($XML_Data.pfsense.unbound.SelectSingleNode("domainoverrides")){
+        $domainindex = 0
+        if($XML_Data.pfsense.unbound.domainoverrides[$domainindex]){
+            Write-Host "`n`rDomain override's:" -BackgroundColor White -ForegroundColor Black
+            Write-Host "Domain : Server IPaddress : TLS Hostname : Description" -BackgroundColor White -ForegroundColor Black
+            "{0} : {1} : {2}" -f `
+            $XML_Data.pfsense.unbound.domainoverrides[$domainindex].domain,`
+            $XML_Data.pfsense.unbound.domainoverrides[$domainindex].ip,`
+            $XML_Data.pfsense.unbound.domainoverrides[$domainindex].descr.'#cdata-section',`
+            $XML_Data.pfsense.unbound.domainoverrides[$domainindex].tls_hostname
+        }
+
+    }
+    if($XML_Data.pfsense.unbound.SelectSingleNode("custom_options")){
+    Write-Host "`n`rCustom options are:" -BackgroundColor White -ForegroundColor Black
+    [System.Text.Encoding]::ASCII.GetString([System.Convert]::FromBase64String($XML_Data.pfsense.unbound.custom_options))
+    }
+    # Converting active interface name's to user defined name's
+#    $XML_Data.pfsense.unbound.active_interface -split "," | %{
+#        if($_ -eq "lo0"){"Localhost"}
+#        try{if($XML_Data.pfsense.interfaces.$_.SelectNodes("descr")){$XML_Data.pfsense.interfaces.$_.descr}
+#        }catch{$XML_Data.pfsense.interfaces.$_.Name}
+#    }
 }
 
 
+Function print_portfwd {
+    Param([Parameter(Mandatory=$true, Position=0,HelpMessage='Valid/active websession to server')][PSObject]$Connection) 
+    $Data = download-xml -Connection @Connection
+    [xml]$XML_Data = $Data.RawContent.Substring($($Data.RawContent.IndexOf("<")))
+    Write-Host "Port Forwarders are:" -BackgroundColor White -ForegroundColor Black
+    Write-Host "Interface : Protocol : Source Address : Source Ports : Dest. Address : Dest. Ports : NAT IP : NAT Ports : Description`n`r" -BackgroundColor White -ForegroundColor Black
+    $natindex = 0
+    try{
+        if($XML_Data.pfsense.nat.rule[$natindex]){
+            while($XML_Data.pfsense.nat.rule[$natindex]){
+                "{0} : {1} : {2} : {3} : {4} : {5} : {6} : {7} : {8}" -f`
+                $XML_Data.pfsense.interfaces.$($XML_Data.pfsense.nat.rule[$natindex].interface).descr.'#cdata-section',` # ToDo: if default name use default
+                $XML_Data.pfsense.nat.rule[$natindex].protocol,`
+                $(if($XML_Data.pfsense.nat.rule[$natindex].source.SelectSingleNode("any")){"Any"}else{"{0}" -f $XML_Data.pfsense.nat.rule[$natindex].source.address}),`
+                $(if($XML_Data.pfsense.nat.rule[$natindex].source.SelectSingleNode("any")){"Any"}else{"{0}" -f $XML_Data.pfsense.nat.rule[$natindex].source.port}),`
+                $(if($XML_Data.pfsense.nat.rule[$natindex].destination.SelectSingleNode("any")){"Any"}else{"{0}" -f $XML_Data.pfsense.nat.rule[$natindex].destination.address}),`
+                $(if($XML_Data.pfsense.nat.rule[$natindex].destination.SelectSingleNode("any")){"Any"}else{"{0}" -f $XML_Data.pfsense.nat.rule[$natindex].destination.port}),`
+                $XML_Data.pfsense.nat.rule[$natindex].target,`
+                $XML_Data.pfsense.nat.rule[$natindex]."local-port",`
+                $XML_Data.pfsense.nat.rule[$natindex].descr.'#cdata-section'
+                $natindex++
+            }
+        }
+        else{"{0} : {1} : {2} : {3} : {4} : {5} : {6} : {7} : {8}" -f`
+            $XML_Data.pfsense.interfaces.$($XML_Data.pfsense.nat.rule.interface).descr.'#cdata-section',` # ToDo: if default name use default
+            $XML_Data.pfsense.nat.rule.protocol,`
+            $(if($XML_Data.pfsense.nat.rule.source.SelectSingleNode("any")){"Any"}else{"{0}" -f $XML_Data.pfsense.nat.rule.source.address}),`
+            $(if($XML_Data.pfsense.nat.rule.source.SelectSingleNode("any")){"Any"}else{"{0}" -f $XML_Data.pfsense.nat.rule.source.port}),`
+            $(if($XML_Data.pfsense.nat.rule.destination.SelectSingleNode("any")){"Any"}else{"{0}" -f $XML_Data.pfsense.nat.rule.destination.address}),`
+            $(if($XML_Data.pfsense.nat.rule.destination.SelectSingleNode("any")){"Any"}else{"{0}" -f $XML_Data.pfsense.nat.rule.destination.port}),`
+            $XML_Data.pfsense.nat.rule.target,`
+            $XML_Data.pfsense.nat.rule."local-port",`
+            $XML_Data.pfsense.nat.rule.descr.'#cdata-section'
+        }
+    }
+    catch{Write-host "No NAT rule's found"}
+}
 
+
+Function print_Alias{}
+
+
+Function print_Vip{}
+
+
+Function print_Firewall{}
 
 
 
