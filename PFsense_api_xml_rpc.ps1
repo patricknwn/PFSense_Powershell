@@ -27,7 +27,8 @@ class PFInterface {
     [string]$DHCPv6DUID
     [string]$DHCPv6IAPDLEN
 
-    static $AttributeMapping = @{
+    static [string]$Section = "interfaces"
+    static $PropertyMapping = @{
         Interface = "if"
         IPv4Address = "ipaddr"
         IPv4Subnet = "subnet"
@@ -50,13 +51,113 @@ class PFStaticRoute {
     [string]$Gateway    # should be [PFGateway] object, but that's for later
     [string]$Description
     
-    static $AttributeMapping = @{
+    static [string]$Section = "staticroutes/route"
+    static $PropertyMapping = @{
         Network = "network"
         Gateway = "gateway"
         Description = "descr"
     }
 }
 
+function ConvertTo-PFObject {
+    [CmdletBinding()]
+    param (
+        ## The XML-RPC response message
+        [Parameter(Mandatory=$true, ValueFromPipeline = $true)]
+            [XML]$XML,
+        # The object type (e.g. PFInterface, PFStaticRoute, ..) to convert to
+        [Parameter(Mandatory=$true, ValueFromPipelineByPropertyName=$true)]
+            [string]$PFObjectType
+    )
+    
+    begin {
+        $Collection = New-Object System.Collections.ArrayList
+        $Object = (New-Object -TypeName "$PFObjectType")
+        $Section = $Object::Section
+        $PropertyMapping = $Object::PropertyMapping
+
+        if(-not $PropertyMapping){
+            throw [System.Data.NoNullAllowedException]::new("Object of type $($PFObjectType) is missing the static 'PropertyMapping' property")
+        }
+
+        if(-not $Section){
+            throw [System.Data.NoNullAllowedException]::new("Object of type $($PFObjectType) is missing the static 'Section' property")
+        }
+    }
+    
+    process {
+        # select the root of the object. This is the node that contains all the individual objects.
+        # we have three choices basically: 
+        # 1) we have the whole system configuration
+        #       XPath to section: /methodResponse/params/param/value/struct/member[name=$section]/value
+        # 2) we have the parent section of this object
+        #       XPath to section: /methodResponse/params/param/value/struct/member[name=$section]/value
+        # 3) we have only the very specific (sub)section
+        #       XPath to section: /methodResponse/params/param/value
+        $XMLSection = Select-Xml -Xml $XML -XPath '/methodResponse/params/param/value'
+        ForEach($Subsection in $($Section -split '/')){
+            $XMLSubsection = Select-Xml -XML $XMLSection.Node -XPath "./struct/member[name='$Subsection']/value"
+            if($XMLSubsection){ $XMLSection = $XMLSubsection }
+        }
+
+        # $XMLSection should now only contain the very sepecific details that we need
+        Write-Debug "XML of the specific section $Section"
+        $XMLSection | Format-Xml | Write-Debug
+
+        # Two XPath to get each individual item:
+        #   XPath: ./value/struct/member 
+        #   XPath: ./value/array/data/value
+        $XMLObjects = Select-Xml -XML $XMLSection.Node -XPath "./struct/member | ./array/data/value"
+        ForEach($XMLObject in $XMLObjects){
+            $Properties = @{}
+
+            ForEach($Property in $PropertyMapping.Keys){
+                $PropertyValue = $null
+
+                # Property Name is a bit special, it can be
+                # 1) the key in the associative array
+                #       XPath: ./struct/member/name
+                # 2) a normal property value in the property array
+                #       XPath: ./struct/member[name='name']/value/string
+                #       XPath: ./array/data/value/member[name='name']/value/string
+                if($Property -eq "name"){}
+
+                if(-not $PropertyValue){
+                    $PropertyValueXPath = "./struct/member[name='$($PropertyMapping.$Property)']/value/string | ./array/data/value/member[name='$($PropertyMapping.$Property)']/value/string"
+                    $PropertyValue = (Select-Xml -XML $XMLObject.Node -XPath $PropertyValueXPath).Node.InnerText
+                    $Properties.$Property = $PropertyValue
+                }
+            }
+
+            $Object = New-Object -TypeName $PFObjectType -Property $Properties
+            [void]$Collection.Add($Object)
+        }
+
+      
+
+        
+
+    #     Select-XML -XPath "//struct/member[name='route']//data/value" | 
+    #     ForEach-Object { # interate over the routes
+    #     $Obj = New-Object PFStaticRoute
+    #     try{
+    #         ForEach($Property in [PFStaticRoute]::AttributeMapping.Keys){ # iterate over all PFStaticRoute properties
+    #             $Obj."$Property" = (Select-XML -XML $_.Node `
+    #                                     -XPath "struct/member[name='$([PFStaticRoute]::AttributeMapping[$Property])']/value/*"
+    #                                 ).Node.InnerText
+    #         }
+
+    #         [void]$Array.Add($Obj)
+    #     } catch {
+    #         Write-Error $_.Exception.Message
+    #         Write-Error $_.ScriptStackTrace
+    #     }                    
+    # }
+        return $Collection
+    }
+    
+    end {}
+}
 function Format-Xml {
     <#
     .SYNOPSIS
@@ -65,7 +166,7 @@ function Format-Xml {
         param(
             ## Text of an XML document. Enhance so that also XML nodes can be pretty printed, not only complete documents.
             [Parameter(ValueFromPipeline = $true)]
-            [XML]$XML
+                [XML]$XML
         )
     
         begin {
@@ -116,26 +217,26 @@ function Get-PFInterface {
     }
 
     process {
-        Get-PFConfiguration -Server $PFObject -Section "interfaces" | 
-            Select-XML -XPath "//param/value/struct/member" | 
-                ForEach-Object {                    
-                    try{
-                        $If = [PFInterface]@{ Name = (Select-XML -Xml $_.Node -XPath "name").Node.InnerText }                        
-                        ForEach($Attribute in [PFInterface]::AttributeMapping.Keys){
-                            $Node = Select-XML -Xml $_.Node -XPath "value/struct/member[name='$([PFInterface]::AttributeMapping[$Attribute])']/value/*"
+        # Get-PFConfiguration -Server $PFObject -Section "interfaces"
+            # Select-XML -XPath "//param/value/struct/member" | 
+            #     ForEach-Object {                    
+            #         try{
+            #             $If = [PFInterface]@{ Name = (Select-XML -Xml $_.Node -XPath "name").Node.InnerText }                        
+            #             ForEach($Attribute in [PFInterface]::AttributeMapping.Keys){
+            #                 $Node = Select-XML -Xml $_.Node -XPath "value/struct/member[name='$([PFInterface]::AttributeMapping.$Attribute)']/value/*"
 
-                            If($Node){ 
-                                $If."$Attribute" = $Node.Node.InnerText 
-                            }
-                        }
+            #                 If($Node){ 
+            #                     $If.$Attribute = $Node.Node.InnerText 
+            #                 }
+            #             }
 
-                        [void]$PFInterfaces.Add($If)
+            #             [void]$PFInterfaces.Add($If)
 
-                    } catch {
-                        Write-Error $_.Exception.Message
-                        Write-Error $_.ScriptStackTrace
-                    }
-                }
+            #         } catch {
+            #             Write-Error $_.Exception.Message
+            #             Write-Error $_.ScriptStackTrace
+            #         }
+            #     }
 
         return $PFInterfaces
     }
@@ -152,37 +253,12 @@ function Get-PFStaticRoute {
             [Alias('InputObject')]
             [psobject]$Server
     )
-   
-    begin {
-        $Array = New-Object System.Collections.ArrayList
-    }
 
     process {
-        Get-PFConfiguration -Server $PFObject -Section "staticroutes" | 
-             Select-XML -XPath "//struct/member[name='route']//data/value" | 
-                 ForEach-Object { # interate over the routes
-                    $Obj = New-Object PFStaticRoute
-                    try{
-                        ForEach($Property in [PFStaticRoute]::AttributeMapping.Keys){ # iterate over all PFStaticRoute properties
-                            $Obj."$Property" = (Select-XML -XML $_.Node `
-                                                    -XPath "struct/member[name='$([PFStaticRoute]::AttributeMapping[$Property])']/value/*"
-                                               ).Node.InnerText
-                        }
-
-                        [void]$Array.Add($Obj)
-                    } catch {
-                        Write-Error $_.Exception.Message
-                        Write-Error $_.ScriptStackTrace
-                    }                    
-                }
-
-        return $Array
-    }
-
-    end {
-        #Write-Debug "Attach debugger here "
+        Get-PFConfiguration -Server $PFObject | ConvertTo-PFObject -PFObjectType PFStaticRoute
     }
 }
+
 function Invoke-PFXMLRPCRequest {
     <#
     .DESCRIPTION
