@@ -29,6 +29,7 @@ class PFInterface {
 
     static [string]$Section = "interfaces"
     static $PropertyMapping = @{
+        Name = "name"
         Interface = "if"
         IPv4Address = "ipaddr"
         IPv4Subnet = "subnet"
@@ -100,15 +101,12 @@ function ConvertTo-PFObject {
             if($XMLSubsection){ $XMLSection = $XMLSubsection }
         }
 
-        # $XMLSection should now only contain the very sepecific details that we need
-        Write-Debug "XML of the specific section $Section"
-        $XMLSection | Format-Xml | Write-Debug
-
         # Two XPath to get each individual item:
         #   XPath: ./value/struct/member 
         #   XPath: ./value/array/data/value
         $XMLObjects = Select-Xml -XML $XMLSection.Node -XPath "./struct/member | ./array/data/value"
-        ForEach($XMLObject in $XMLObjects){
+        ForEach($XMLObject in $XMLObjects){    
+            $XMLObject = [xml]$XMLObject.Node.OuterXML # weird that it's necessary, but as its own XML object it works           
             $Properties = @{}
 
             ForEach($Property in $PropertyMapping.Keys){
@@ -116,17 +114,20 @@ function ConvertTo-PFObject {
 
                 # Property Name is a bit special, it can be
                 # 1) the key in the associative array
-                #       XPath: ./struct/member/name
+                #       XPath: ./member/name
                 # 2) a normal property value in the property array
-                #       XPath: ./struct/member[name='name']/value/string
-                #       XPath: ./array/data/value/member[name='name']/value/string
-                if($Property -eq "name"){}
+                #       XPath: //member[name='name']/value/string
+                if($Property -eq "Name"){
+                    $PropertyValueXPath = "./member/name"
+                    $PropertyValue = (Select-Xml -XML $XMLObject -XPath $PropertyValueXPath).Node.InnerText
+                }
 
                 if(-not $PropertyValue){
-                    $PropertyValueXPath = "./struct/member[name='$($PropertyMapping.$Property)']/value/string | ./array/data/value/member[name='$($PropertyMapping.$Property)']/value/string"
-                    $PropertyValue = (Select-Xml -XML $XMLObject.Node -XPath $PropertyValueXPath).Node.InnerText
-                    $Properties.$Property = $PropertyValue
+                    $PropertyValueXPath = "//member[name='$($PropertyMapping.$Property)']/value/string"
+                    $PropertyValue = (Select-Xml -XML $XMLObject -XPath $PropertyValueXPath).Node.InnerText                    
                 }
+
+                $Properties.$Property = $PropertyValue
             }
 
             $Object = New-Object -TypeName $PFObjectType -Property $Properties
@@ -212,11 +213,9 @@ function Get-PFInterface {
             [psobject]$Server
     )
    
-    begin {
-        $PFInterfaces = New-Object System.Collections.ArrayList
-    }
-
     process {
+        Get-PFConfiguration -Server $PFObject -Section "interfaces" | ConvertTo-PFObject -PFObjectType PFInterface
+
         # Get-PFConfiguration -Server $PFObject -Section "interfaces"
             # Select-XML -XPath "//param/value/struct/member" | 
             #     ForEach-Object {                    
@@ -255,7 +254,7 @@ function Get-PFStaticRoute {
     )
 
     process {
-        Get-PFConfiguration -Server $PFObject | ConvertTo-PFObject -PFObjectType PFStaticRoute
+        Get-PFConfiguration -Server $PFObject -Section "staticroutes/route" | ConvertTo-PFObject -PFObjectType PFStaticRoute
     }
 }
 
