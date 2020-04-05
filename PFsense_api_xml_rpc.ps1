@@ -68,21 +68,22 @@ function ConvertTo-PFObject {
             [XML]$XML,
         # The object type (e.g. PFInterface, PFStaticRoute, ..) to convert to
         [Parameter(Mandatory=$true, ValueFromPipelineByPropertyName=$true)]
-            [string]$PFObjectType
+            [ValidateSet('PFInterface','PFStaticRoute')]
+            [string]$PFServerType
     )
     
     begin {
         $Collection = New-Object System.Collections.ArrayList
-        $Object = (New-Object -TypeName "$PFObjectType")
+        $Object = (New-Object -TypeName "$PFServerType")
         $Section = $Object::Section
         $PropertyMapping = $Object::PropertyMapping
 
         if(-not $PropertyMapping){
-            throw [System.Data.NoNullAllowedException]::new("Object of type $($PFObjectType) is missing the static 'PropertyMapping' property")
+            throw [System.Data.NoNullAllowedException]::new("Object of type $($PFServerType) is missing the static 'PropertyMapping' property")
         }
 
         if(-not $Section){
-            throw [System.Data.NoNullAllowedException]::new("Object of type $($PFObjectType) is missing the static 'Section' property")
+            throw [System.Data.NoNullAllowedException]::new("Object of type $($PFServerType) is missing the static 'Section' property")
         }
     }
     
@@ -102,8 +103,8 @@ function ConvertTo-PFObject {
         }
 
         # Two XPath to get each individual item:
-        #   XPath: ./value/struct/member 
-        #   XPath: ./value/array/data/value
+        #   XPath: ./struct/member (for associative array in the original PHP code)
+        #   XPath: ./array/data/value (for index-based array in the original PHP code)
         $XMLObjects = Select-Xml -XML $XMLSection.Node -XPath "./struct/member | ./array/data/value"
         ForEach($XMLObject in $XMLObjects){    
             $XMLObject = [xml]$XMLObject.Node.OuterXML # weird that it's necessary, but as its own XML object it works           
@@ -130,7 +131,7 @@ function ConvertTo-PFObject {
                 $Properties.$Property = $PropertyValue
             }
 
-            $Object = New-Object -TypeName $PFObjectType -Property $Properties
+            $Object = New-Object -TypeName $PFServerType -Property $Properties
             [void]$Collection.Add($Object)
         }
 
@@ -214,9 +215,9 @@ function Get-PFInterface {
     )
    
     process {
-        Get-PFConfiguration -Server $PFObject -Section "interfaces" | ConvertTo-PFObject -PFObjectType PFInterface
+        Get-PFConfiguration -Server $PFServer -Section "interfaces" | ConvertTo-PFObject -PFObjectType PFInterface
 
-        # Get-PFConfiguration -Server $PFObject -Section "interfaces"
+        # Get-PFConfiguration -Server $PFServer -Section "interfaces"
             # Select-XML -XPath "//param/value/struct/member" | 
             #     ForEach-Object {                    
             #         try{
@@ -254,7 +255,7 @@ function Get-PFStaticRoute {
     )
 
     process {
-        Get-PFConfiguration -Server $PFObject -Section "staticroutes/route" | ConvertTo-PFObject -PFObjectType PFStaticRoute
+        Get-PFConfiguration -Server $PFServer -Section "staticroutes/route" | ConvertTo-PFObject -PFObjectType PFStaticRoute
     }
 }
 
@@ -414,17 +415,18 @@ function Test-PFCredential {
 ## BEGIN OF CONTROLLER LOGIC
 Clear-Host
 
-$PFObject = [psobject]@{
+# TODO: insert logic from my master branch here to validate $Server and populate $PFServer object
+$PFServer = [psobject]@{
     Credential = $null
-    Host = "10.10.10.5"
-    Port = 443
+    Host = $Server
+    Port = $null
     NoTLS = $false
     SkipCertificateCheck = $true
-    SkipConnectionTest = $false    
+    SkipConnectionTest = $false    # TODO: implement (is this necessary?)
 }
 
 # Warn the user if no TLS encryption is used
-if($PFObject.NoTLS){
+if($PFServer.NoTLS){
     Write-Warning "WARNING: your credentials are transmitted over an INSECURE connection!"
 }
 
@@ -432,16 +434,16 @@ if($PFObject.NoTLS){
 if(-not [string]::IsNullOrWhiteSpace($Username)){
     if(-not [string]::IsNullOrWhiteSpace($InsecurePassword)){
         $Password = ConvertTo-SecureString -String $InsecurePassword -AsPlainText -Force
-        $PFObject.Credential = New-Object System.Management.Automation.PSCredential($Username, $Password) 
+        $PFServer.Credential = New-Object System.Management.Automation.PSCredential($Username, $Password) 
 
     } else {
-        $PFObject.Credential = Get-Credential -UserName $Username
+        $PFServer.Credential = Get-Credential -UserName $Username
     }
 }
-while(-not (Test-PFCredential -Server $PFObject)){ $PFObject.Credential = Get-Credential }
+while(-not (Test-PFCredential -Server $PFServer)){ $PFServer.Credential = Get-Credential }
 
 # We have now tested credentials, let's get some stuff
-$Interfaces = $PFObject | Get-PFInterface
+$Interfaces = $PFServer | Get-PFInterface
 
 # Print all interfaces
 $Interfaces | Format-Table
@@ -453,7 +455,7 @@ $IFLAN = $Interfaces |
 Write-Output "LAN has interface $($IFLAN.Interface)"
 
 # Get all config information so that we can see what's inside
-Get-PFStaticRoute -Server $PFObject
+Get-PFStaticRoute -Server $PFServer
 
 
 # Function Printe_route{
