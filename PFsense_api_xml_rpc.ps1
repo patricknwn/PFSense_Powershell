@@ -25,7 +25,36 @@ class PFInterface {
     [string]$Media
     [string]$MediaOpt
     [string]$DHCPv6DUID
-    [string]$DHCPv6IAPDLEN    
+    [string]$DHCPv6IAPDLEN
+
+    static $AttributeMapping = @{
+        Interface = "if"
+        IPv4Address = "ipaddr"
+        IPv4Subnet = "subnet"
+        IPv4Gateway = "gateway"
+        IPv6Address = "ipaddrv6"
+        IPv6Subnet = "subnetv6"
+        IPv6Gateway = "gatewayv6"
+        Trackv6Interface = "track6-interface"
+        Trackv6PrefixId = "track6-prefix-id"
+        BlockBogons = "blockbogons"
+        Media = "media"
+        MediaOpt = "mediaopt"
+        DHCPv6DUID = "dhcp6-duid"
+        DHCPv6IAPDLEN = "dhcp6-ia-pd-len"
+    }
+}
+
+class PFStaticRoute {
+    [string]$Network
+    [string]$Gateway    # should be [PFGateway] object, but that's for later
+    [string]$Description
+    
+    static $AttributeMapping = @{
+        Network = "network"
+        Gateway = "gateway"
+        Description = "descr"
+    }
 }
 
 function Format-Xml {
@@ -52,7 +81,7 @@ function Format-Xml {
             $StringWriter.Flush();
             return $StringWriter.ToString();
         }
-    }
+}
 
 function Get-PFConfiguration {
     [CmdletBinding()]
@@ -91,27 +120,9 @@ function Get-PFInterface {
             Select-XML -XPath "//param/value/struct/member" | 
                 ForEach-Object {                    
                     try{
-                        $AttributeMapping = @{
-                            Interface = "if"
-                            IPv4Address = "ipaddr"
-                            IPv4Subnet = "subnet"
-                            IPv4Gateway = "gateway"
-                            IPv6Address = "ipaddrv6"
-                            IPv6Subnet = "subnetv6"
-                            IPv6Gateway = "gatewayv6"
-                            Trackv6Interface = "track6-interface"
-                            Trackv6PrefixId = "track6-prefix-id"
-                            BlockBogons = "blockbogons"
-                            Media = "media"
-                            MediaOpt = "mediaopt"
-                            DHCPv6DUID = "dhcp6-duid"
-                            DHCPv6IAPDLEN = "dhcp6-ia-pd-len"
-
-                        }
-
                         $If = [PFInterface]@{ Name = (Select-XML -Xml $_.Node -XPath "name").Node.InnerText }                        
-                        ForEach($Attribute in $AttributeMapping.Keys){
-                            $Node = Select-XML -Xml $_.Node -XPath "value/struct/member[name='$($AttributeMapping."$Attribute")']/value/*"
+                        ForEach($Attribute in [PFInterface]::AttributeMapping.Keys){
+                            $Node = Select-XML -Xml $_.Node -XPath "value/struct/member[name='$([PFInterface]::AttributeMapping[$Attribute])']/value/*"
 
                             If($Node){ 
                                 $If."$Attribute" = $Node.Node.InnerText 
@@ -123,10 +134,49 @@ function Get-PFInterface {
                     } catch {
                         Write-Error $_.Exception.Message
                         Write-Error $_.ScriptStackTrace
-                    }                    
+                    }
                 }
 
         return $PFInterfaces
+    }
+
+    end {
+        #Write-Debug "Attach debugger here "
+    }
+}
+
+function Get-PFStaticRoute {
+    [CmdletBinding()]
+    param (
+        [Parameter(Mandatory=$true, ValueFromPipeline=$true)]
+            [Alias('InputObject')]
+            [psobject]$Server
+    )
+   
+    begin {
+        $Array = New-Object System.Collections.ArrayList
+    }
+
+    process {
+        Get-PFConfiguration -Server $PFObject -Section "staticroutes" | 
+             Select-XML -XPath "//struct/member[name='route']//data/value" | 
+                 ForEach-Object { # interate over the routes
+                    $Obj = New-Object PFStaticRoute
+                    try{
+                        ForEach($Property in [PFStaticRoute]::AttributeMapping.Keys){ # iterate over all PFStaticRoute properties
+                            $Obj."$Property" = (Select-XML -XML $_.Node `
+                                                    -XPath "struct/member[name='$([PFStaticRoute]::AttributeMapping[$Property])']/value/*"
+                                               ).Node.InnerText
+                        }
+
+                        [void]$Array.Add($Obj)
+                    } catch {
+                        Write-Error $_.Exception.Message
+                        Write-Error $_.ScriptStackTrace
+                    }                    
+                }
+
+        return $Array
     }
 
     end {
@@ -217,42 +267,43 @@ function Invoke-PFXMLRPCRequest {
             $FaultCode = ($XMLResponse | Select-Xml -XPath '//member[name="faultCode"]/value/int').Node.InnerText
             $FaultReason = ($XMLResponse | Select-Xml -XPath '//member[name="faultString"]/value/string').Node.InnerText
 
-            if([string]::IsNullOrWhiteSpace($FaultCode) -and [string]::IsNullOrWhiteSpace($FaultReason)){
-                return ($Passthru) ? $Response : $XMLResponse
-
-            } else {
-                switch($FaultReason){
-                    'Authentication failed: Invalid username or password' {
-                        throw [System.Security.Authentication.InvalidCredentialException]::New("Invalid credentials to access XML-RPC at $URL")
-                    }
-                    'Authentication failed: not enough privileges' {
-                        throw [System.Security.AccessControl.PrivilegeNotHeldException]::New("Insuffucient privileges to access XML-RPC at $URL")
-                    }
-                    'Unable to parse request XML' {
-                        throw [System.Xml.XmlException]::New('The server was unable to parse the XML-RPC request message.')
-                    }
-                    default {
-                        Write-Debug "Sent request: $($XMLRequestTemplate)"
-                        Write-Debug "Server response: $($Response.Content)"                
-                        throw "Server returned fault code $FaultCode with reason '$FaultReason'"
-                    }
-                }                
-            }
-
         # most likely reason for this error is that the returened message was invalid XML, probably because you messed up ;)
         } catch [System.Management.Automation.RuntimeException] {
             Write-Debug "The returned content-type was: $($Response.Headers.'Content-Type')"
             Write-Debug "The message from the server could not be converted to XML. This is what the server returned: $($Response.Content)" 
             Write-Debug "Your message to the server was: $($XMLRequest)"
 
-        # unknow exception, let the user 
+        # unknow exception, let the user know
         } catch {
             Write-Error $_.Exception.Message
             Write-Error $_.ScriptStackTrace
         }
+
+        if([string]::IsNullOrWhiteSpace($FaultCode) -and [string]::IsNullOrWhiteSpace($FaultReason)){
+            return ($Passthru) ? $Response : $XMLResponse
+
+        } else {
+            switch($FaultReason){
+                'Authentication failed: Invalid username or password' {
+                    throw [System.Security.Authentication.InvalidCredentialException]::New("Invalid credentials to access XML-RPC at $URL")
+                }
+                'Authentication failed: not enough privileges' {
+                    throw [System.Security.AccessControl.PrivilegeNotHeldException]::New("Insuffucient privileges to access XML-RPC at $URL")
+                }
+                'Unable to parse request XML' {
+                    throw [System.Xml.XmlException]::New('The server was unable to parse the XML-RPC request message.')
+                }
+                default {
+                    Write-Debug "Sent request: $($XMLRequestTemplate)"
+                    Write-Debug "Server response: $($Response.Content)"                
+                    throw "Server returned fault code $FaultCode with reason '$FaultReason'"
+                }
+            }                
+        }
     }
 }
-function Test-Credential {
+
+function Test-PFCredential {
     [CmdletBinding()]
     param (
         [Parameter(Mandatory=$true, ValueFromPipeline=$true)]
@@ -272,6 +323,7 @@ function Test-Credential {
         # catch when use of the system is not possible with this credentials
         } catch [System.Security.Authentication.InvalidCredentialException],[System.Security.AccessControl.PrivilegeNotHeldException] {
             Write-Debug $_.Exception.Message
+            Write-Host "ERROR: $($_.Exception.Message)" -ForegroundColor red
             return $false
 
         # maybe something happened, but we are able to use the system
@@ -298,7 +350,7 @@ $PFObject = [psobject]@{
 
 # Warn the user if no TLS encryption is used
 if($PFObject.NoTLS){
-    Write-Warning "WARNING: your credentials are transmitted in over an INSECURE connection!"
+    Write-Warning "WARNING: your credentials are transmitted over an INSECURE connection!"
 }
 
 # Test credentials before we continue. 
@@ -311,17 +363,22 @@ if(-not [string]::IsNullOrWhiteSpace($Username)){
         $PFObject.Credential = Get-Credential -UserName $Username
     }
 }
-while(-not (Test-Credential -Server $PFObject)){ $PFObject.Credential = Get-Credential }
+while(-not (Test-PFCredential -Server $PFObject)){ $PFObject.Credential = Get-Credential }
 
 # We have now tested credentials, let's get some stuff
-$Interfaces = Get-PFInterface -Server $PFObject
+$Interfaces = $PFObject | Get-PFInterface
 
 # Print all interfaces
 $Interfaces | Format-Table
 
 # Get the if for LAN:
-$IFLAN = $Interfaces | Where-Object { $_.Name -eq 'LAN' } | Select-Object -First 1
+$IFLAN = $Interfaces | 
+            Where-Object { $_.Name -eq 'LAN' } | 
+                Select-Object -First 1
 Write-Output "LAN has interface $($IFLAN.Interface)"
+
+# Get all config information so that we can see what's inside
+Get-PFStaticRoute -Server $PFObject
 
 
 # Function Printe_route{
@@ -368,6 +425,11 @@ Write-Output "LAN has interface $($IFLAN.Interface)"
 #     }catch{Write-host "No Interfaces found"}
 # }
 
+
+#TODO: use a nicer structure, probably hashtables :)
+# $Actions = @{ trigger = [ScriptBlock]::Create("Write-Host -Message 'WOW'") }
+# Invoke-Command $Actions.trigger
+#
 # if (-not $service -or $service -eq "Help" -or $service -eq "H"){$HelpMessageheader
 #     $manall
 #     exit}
