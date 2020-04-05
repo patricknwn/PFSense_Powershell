@@ -69,21 +69,21 @@ function ConvertTo-PFObject {
         # The object type (e.g. PFInterface, PFStaticRoute, ..) to convert to
         [Parameter(Mandatory=$true, ValueFromPipelineByPropertyName=$true)]
             [ValidateSet('PFInterface','PFStaticRoute')]
-            [string]$PFServerType
+            [string]$PFObjectType
     )
     
     begin {
         $Collection = New-Object System.Collections.ArrayList
-        $Object = (New-Object -TypeName "$PFServerType")
+        $Object = (New-Object -TypeName "$PFObjectType")
         $Section = $Object::Section
         $PropertyMapping = $Object::PropertyMapping
 
         if(-not $PropertyMapping){
-            throw [System.Data.NoNullAllowedException]::new("Object of type $($PFServerType) is missing the static 'PropertyMapping' property")
+            throw [System.Data.NoNullAllowedException]::new("Object of type $($PFObjectType) is missing the static 'PropertyMapping' property")
         }
 
         if(-not $Section){
-            throw [System.Data.NoNullAllowedException]::new("Object of type $($PFServerType) is missing the static 'Section' property")
+            throw [System.Data.NoNullAllowedException]::new("Object of type $($PFObjectType) is missing the static 'Section' property")
         }
     }
     
@@ -131,7 +131,7 @@ function ConvertTo-PFObject {
                 $Properties.$Property = $PropertyValue
             }
 
-            $Object = New-Object -TypeName $PFServerType -Property $Properties
+            $Object = New-Object -TypeName $PFObjectType -Property $Properties
             [void]$Collection.Add($Object)
         }
 
