@@ -5,9 +5,10 @@ Param
     [Parameter(Mandatory=$true, Position=0,HelpMessage='The Server address')] [String] $Server,
     [Parameter(Mandatory=$false, Position=1,HelpMessage='The Username')] [string] $Username,
     [Parameter(Mandatory=$false, Position=2,HelpMessage='The Password')] [string] $InsecurePassword,
-    [Parameter(Mandatory=$false, Position=3,HelpMessage='The service you would like to talke to')] [PSObject] $service,
-    [Parameter(Mandatory=$false, Position=4,HelpMessage='The action you would like to do on the service')] [PSObject] $Action,
-    [Switch] $NoTLS
+    [Parameter(Mandatory=$false, Position=3,HelpMessage='The service you would like to talke to')] [string] $Service,
+    [Parameter(Mandatory=$false, Position=4,HelpMessage='The action you would like to do on the service')] [string] $Action,
+    [Switch] $NoTLS,
+    [switch] $SkipCertificateCheck
     )
 
 . .\man.ps1
@@ -261,42 +262,25 @@ function Get-PFConfiguration {
 
 function Get-PFInterface {
     [CmdletBinding()]
-    param (
-        [Parameter(Mandatory=$true, ValueFromPipeline=$true)]
-            [Alias('Server')]
-            [psobject]$InputObject
-    )
-   
-    process {
-        return $InputObject | Get-PFConfiguration | ConvertTo-PFObject -PFObjectType PFInterface
-    }
+    param ([Parameter(Mandatory=$true, ValueFromPipeline=$true)][Alias('Server')][psobject]$InputObject)   
+    process { return $InputObject | Get-PFConfiguration | ConvertTo-PFObject -PFObjectType PFInterface }
 }
 
 function Get-PFStaticRoute {
     [CmdletBinding()]
-    param (
-        [Parameter(Mandatory=$true, ValueFromPipeline=$true)]
-            [Alias('InputObject')]
-            [psobject]$Server
-    )
-
-    process {
-        Get-PFConfiguration -Server $PFServer -Section "staticroutes/route" | ConvertTo-PFObject -PFObjectType PFStaticRoute
-    }
+    param ([Parameter(Mandatory=$true, ValueFromPipeline=$true)][Alias('Server')][psobject]$InputObject)
+    process { Get-PFConfiguration -Server $PFServer -Section "staticroutes/route" | ConvertTo-PFObject -PFObjectType PFStaticRoute }
 }
 
 function Get-PFGateway {
     [CmdletBinding()]
-    param (
-        [Parameter(Mandatory=$true, ValueFromPipeline=$true)]
-            [Alias('Server')]
-            [psobject]$InputObject
-    )
+    param ([Parameter(Mandatory=$true, ValueFromPipeline=$true)][Alias('Server')][psobject]$InputObject)
 
     process {
         $Gateways = $InputObject | Get-PFConfiguration | ConvertTo-PFObject -PFObjectType PFGateway
         $Interfaces = $InputObject | Get-PFInterface
 
+        # replace the text of the gateway with its actual object
         ForEach($Gateway in $Gateways){
             $Gateway.Interface = $Interfaces | Where-Object { $_.Name -eq $Gateway.Interface }
         }
@@ -307,16 +291,13 @@ function Get-PFGateway {
 
 function Get-PFalias {
     [CmdletBinding()]
-    param (
-        [Parameter(Mandatory=$true, ValueFromPipeline=$true)]
-            [Alias('InputObject')]
-            [psobject]$Server
-    )
+    param ([Parameter(Mandatory=$true, ValueFromPipeline=$true)][Alias('Server')][psobject]$InputObject)
 
     process {
-        $Aliases = Get-PFConfiguration -Server $PFServer -Section "aliases/alias" | ConvertTo-PFObject -PFObjectType PFalias 
+        $Aliases = $InputObject | Get-PFConfiguration | ConvertTo-PFObject -PFObjectType PFalias 
         ForEach($Alias in $Aliases){
-            $Alias.Address = $_.Address -split " "            
+            $Alias.Address = $Alias.Address -split " "
+            # TODO: split the detail field
         }
         
         return $Aliases
@@ -486,7 +467,7 @@ $PFServer = [PFServer]@{
     Address = $Server
     Port = $null
     NoTLS = $NoTLS
-    SkipCertificateCheck = $true
+    SkipCertificateCheck = $SkipCertificateCheck
 }
 
 # Warn the user if no TLS encryption is used
@@ -507,66 +488,37 @@ if(-not [string]::IsNullOrWhiteSpace($Username)){
 while(-not (Test-PFCredential -Server $PFServer)){ $PFServer.Credential = Get-Credential }
 
 # Get all config information so that we can see what's inside
-$XMLConfig = Get-PFConfiguration -Server $PFServer
-if(-not $XMLConfig){ exit }
+#$XMLConfig = Get-PFConfiguration -Server $PFServer
+#if(-not $XMLConfig){ exit }
 
 # We have now tested credentials, let's get some stuff
-$XMLConfig | Get-PFInterface | Format-Table
+#$XMLConfig | Get-PFInterface | Format-Table
 
-# get the gateway's and convert the interface name to the user defined interface name
-$XMLConfig | Get-PFGateway | Format-Table
+# get the gateways and convert the interface name to the user defined interface name
+#$XMLConfig | Get-PFGateway | Format-Table
 
-exit
+# get the aliases that are defined
+#$XMLConfig | Get-PFalias | Format-Table
 
-$aliasses = Get-PFalias -Server $PFServer
-$aliasses | Format-Table
- 
-$alias_print | format-table
-#$aliasses | %{$_.address.split(" ");$_.detail.split("||") }
 
-# Function Printe_route{
-# # PFsense_api_xml_rpc.ps1 -server '192.168.0.1' -username 'admin' -Password 'pfsense' -service route -Action print -NoTLS
-#     $php_command = "global `$config; `$toreturn=`$config['staticroutes'];"
-#     $Data = [XML]$(Get-PFConfiguration -php_command $php_command).Content
-#     Write-Host "Static routes are:" -BackgroundColor White -ForegroundColor Black
-#     Write-Host "Network : Gateway : Description`n`r" -BackgroundColor White -ForegroundColor Black
-#     $staticroutes = $($Data | Select-Xml -XPath "/methodResponse/params/param/value/struct/member/value/array/data/value")
-#     $routeindex = 0
-#     try{
-#         if($staticroutes[$routeindex]){
-#             while($staticroutes[$routeindex]){
-#                 "{0} : {1} : {2}" -f`
-#                 $staticroutes[$routeindex].Node.struct.member.value[0].string,`
-#                 $staticroutes[$routeindex].Node.struct.member.value[1].string,`
-#                 $staticroutes[$routeindex].Node.struct.member.value[2].string
-#                 $routeindex++
-#             }
-#         }
-#         else{"{0} : {1} : {2}" -f $staticroutes.Node.struct.member.value[0].string,$staticroutes.Node.struct.member.value[1].string,$staticroutes.Node.struct.member.value[2].string}
-#     }catch{Write-host "No Static routes Found"}
-# }
+# define the possible execution flows
+$Flow = @{
+    "alias" = @{
+        "print" = "param(`$InputObject); `$InputObject | Get-PFAlias | Format-Table"
+    }
+}
 
-# function  print_interface {
-#     $php_command = "global `$config; `$toreturn=`$config['interfaces'];"
-#     $Data = [XML]$(Get-PFConfiguration -php_command $php_command).Content
-#     Write-Host "Interfaces are:" -BackgroundColor White -ForegroundColor Black
-#     Write-Host "Name : Gateway : Description`n`r" -BackgroundColor White -ForegroundColor Black
-#     $interfaces = $data.methodResponse.params.param.value.struct.member
-#     $interfaces[0].value.struct.member[0].name
-#     $interindex = 0
-#     try{
-#         if($interfaces[$interindex].name){
-#             while($interfaces[$interindex].name){
-#                 "{0} : {1} : {2}" -f`
-#                 $interfaces[$interindex].name,`
-#                 $interfaces[$interindex].name,`
-#                 $interfaces[$interindex].name
-#                 $interindex++
-#             }
-#         }
-#         else{"{0} : {1} : {2}" -f $interfaces.name,$interfaces.name,$interfaces.name}
-#     }catch{Write-host "No Interfaces found"}
-# }
+# execute requested flow
+try{
+    if(-not $Flow.ContainsKey($Service)){  Write-Host "Unknown service '$Service'" -ForegroundColor red; exit 2 }
+    if(-not $Flow.$Service.ContainsKey($Action)){ Write-Host "Unknown action '$Action' for service '$Service'" -ForegroundColor red; exit 3 }
+
+    Invoke-Command -ScriptBlock ([ScriptBlock]::Create($Flow.$Service.$Action)) -ArgumentList $PFServer
+
+} catch {
+    Write-Error $_.Exception
+    exit 1    
+}
 
 
 #TODO: use a nicer structure, probably hashtables :)
