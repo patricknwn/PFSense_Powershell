@@ -45,8 +45,8 @@ class PFInterface {
     [string]$DHCPv6IAPDLEN
 
     static [string]$Section = "interfaces"
+    # property name as it appears in the XML, insofar it's different from the object's property name
     static $PropertyMapping = @{
-        Name = "name"
         Interface = "if"
         Description = "descr"
         IPv4Address = "ipaddr"
@@ -57,11 +57,12 @@ class PFInterface {
         IPv6Gateway = "gatewayv6"
         Trackv6Interface = "track6-interface"
         Trackv6PrefixId = "track6-prefix-id"
-        BlockBogons = "blockbogons"
-        Media = "media"
-        MediaOpt = "mediaopt"
         DHCPv6DUID = "dhcp6-duid"
         DHCPv6IAPDLEN = "dhcp6-ia-pd-len"
+    }
+
+    [string] ToString(){
+        return ([string]::IsNullOrWhiteSpace($this.Description)) ? $this.Name : $this.Description
     }
 }
 
@@ -71,15 +72,14 @@ class PFStaticRoute {
     [string]$Description
     
     static [string]$Section = "staticroutes/route"
-    static $PropertyMapping = @{
-        Network = "network"
-        Gateway = "gateway"
+    # property name as it appears in the XML, insofar it's different from the object's property name
+    static $PropertyMapping = @{ 
         Description = "descr"
     }
 }
 
 class PFGateway{
-    [string]$Interface
+    [psobject]$Interface
     [string]$Gateway
     [string]$Monitor
     [string]$Name
@@ -88,13 +88,8 @@ class PFGateway{
     [string]$Description
 
     static [string]$Section = "gateways/gateway_item"
+    # property name as it appears in the XML, insofar it's different from the object's property name
     static $PropertyMapping = @{
-        Interface = "interface"
-        Gateway = "gateway"
-        Monitor = "monitor"
-        Name = "name"
-        Weight = "weight"
-        IPProtocol = "ipprotocol"
         Description = "descr"
     }
 }
@@ -102,20 +97,16 @@ class PFGateway{
 class PFalias{
     [string]$Name
     [string]$Type
-    [string]$Address
+    [string[]]$Address
     [string]$Description
-    [string]$Detail
+    [string[]]$Detail
 
     static [string]$Section = "aliases/alias"
+    # property name as it appears in the XML, insofar it's different from the object's property name
     static $PropertyMapping = @{
-        Name = "name"
-        Type = "type"
-        Address = "address"
         Description = "descr"
-        Detail = "detail"
     }
 }
-
 
 function ConvertTo-PFObject {
     [CmdletBinding()]
@@ -167,7 +158,10 @@ function ConvertTo-PFObject {
             $XMLObject = [xml]$XMLObject.Node.OuterXML # weird that it's necessary, but as its own XML object it works           
             $Properties = @{}
 
-            ForEach($Property in $PropertyMapping.Keys){
+            # ForEach($Property in $PropertyMapping.Keys){
+            $Object | Get-Member -MemberType properties | Select-Object -Property Name | ForEach-Object {
+                $Property = $_.Name
+                $XMLProperty = ($PropertyMapping.$Property) ? $PropertyMapping.$Property : $Property.ToLower()
                 $PropertyValue = $null
 
                 # Property Name is a bit special, it can be
@@ -181,7 +175,7 @@ function ConvertTo-PFObject {
                 }
 
                 if(-not $PropertyValue){
-                    $PropertyValueXPath = "//member[name='$($PropertyMapping.$Property)']/value/string"
+                    $PropertyValueXPath = "//member[name='$($XMLProperty)']/value/string"
                     $PropertyValue = (Select-Xml -XML $XMLObject -XPath $PropertyValueXPath).Node.InnerText                    
                 }
 
@@ -192,6 +186,9 @@ function ConvertTo-PFObject {
             [void]$Collection.Add($Object)
         }
 
+        if($Collection.Count -lt 1){
+            $Collection.Add($Object)
+        }
         return $Collection
     }
     
@@ -221,24 +218,6 @@ function Format-Xml {
             $StringWriter.Flush();
             return $StringWriter.ToString();
         }
-}
-
-function convert-PFInterface-Name{
-    [CmdletBinding()]
-    param (
-        [Parameter(Mandatory=$true, ValueFromPipeline=$true)]
-            [Alias('InputObject')]
-            [psobject]$Server,
-        [Parameter(Mandatory=$true, ValueFromPipeline=$true)]
-            [Alias('InputName')]
-            [String]$name
-    )
-    $Interfaces = $Server | Get-PFInterface
-    $IFname = $Interfaces | 
-        Where-Object { $_.Name -eq $name } | 
-            Select-Object -First 1
-            if($IFname.descr){return $IFname.descr}
-            else{return $IFname.name}
 }
 
 function Get-PFConfiguration {
@@ -296,7 +275,14 @@ function Get-PFGateway {
     )
 
     process {
-        Get-PFConfiguration -Server $PFServer -Section "gateways/gateway_item" | ConvertTo-PFObject -PFObjectType PFGateway
+        $Gateways = Get-PFConfiguration -Server $PFServer | ConvertTo-PFObject -PFObjectType PFGateway
+        $Interfaces = Get-PFInterface -Server $PFServer
+
+        ForEach($Gateway in $Gateways){
+            $Gateway.Interface = $Interfaces | Where-Object { $_.Name -eq $Gateway.Interface }
+        }
+
+        return $Gateways
     }
 }
 
@@ -309,7 +295,12 @@ function Get-PFalias {
     )
 
     process {
-        Get-PFConfiguration -Server $PFServer -Section "aliases/alias" | ConvertTo-PFObject -PFObjectType PFalias
+        $Aliases = Get-PFConfiguration -Server $PFServer -Section "aliases/alias" | ConvertTo-PFObject -PFObjectType PFalias 
+        ForEach($Alias in $Aliases){
+            $Alias.Address = $_.Address -split " "            
+        }
+        
+        return $Aliases
     }
 }
 
@@ -497,21 +488,15 @@ if(-not [string]::IsNullOrWhiteSpace($Username)){
 }
 while(-not (Test-PFCredential -Server $PFServer)){ $PFServer.Credential = Get-Credential }
 
-# We have now tested credentials, let's get some stuff
-$Interfaces = $PFServer | Get-PFInterface
-
-# Print all interfaces
-$Interfaces | Format-Table
-
-
 # Get all config information so that we can see what's inside
- Get-PFStaticRoute -Server $PFServer 
+$XMLConfig = Get-PFConfiguration -Server $PFServer
 
+# We have now tested credentials, let's get some stuff
+$PFServer | Get-PFInterface | Format-Table
 
 # get the gateway's and convert the interface name to the user defined interface name
-$gatewayvariable = Get-PFGateway -Server $PFServer 
-$gatewayvariable | %{$_.interface = convert-PFInterface-Name -Server $PFServer -name $_.interface}
-$gatewayvariable | Format-Table
+Get-PFGateway -Server $PFServer | Format-Table
+
 
 
 $aliasses = Get-PFalias -Server $PFServer
