@@ -195,9 +195,6 @@ function ConvertTo-PFObject {
             [void]$Collection.Add($Object)
         }
 
-        if($Collection.Count -lt 1){
-            $Collection.Add($Object)
-        }
         return $Collection
     }
     
