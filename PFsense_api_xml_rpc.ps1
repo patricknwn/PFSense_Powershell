@@ -566,7 +566,7 @@ $aliasses = Get-PFaliases -Server $PFServer
 $aliasses | Format-Table
  
 $alias_print | format-table
-#$aliasses | %{$_.address.split(" ");$_.detail.split("||") }
+$aliasses | %{$_.address.split(" ");$_.detail.split("||") }
 
 # Function Printe_route{
 # # PFsense_api_xml_rpc.ps1 -server '192.168.0.1' -username 'admin' -Password 'pfsense' -service route -Action print -NoTLS
