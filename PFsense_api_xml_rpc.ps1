@@ -1,3 +1,5 @@
+# $server = "192.168.0.1" ; $username = "Admin" ; $InsecurePassword = "pfsense"
+
 Param
     (
     [Parameter(Mandatory=$true, Position=0,HelpMessage='The Server address')] [String] $Server,
@@ -10,9 +12,24 @@ Param
 
 . .\man.ps1
 
+# classes to build:
+<#
+dhcpd
+dhcpdv6
+syslog
+nat
+filter = firewall
+aliases
+load_balancer
+openvpn
+unbound = dnsresolver
+cert = cerificates
+#>
+
 class PFInterface {
     [string]$Name
     [string]$Interface
+    [string]$descr
     [string]$IPv4Address    # should be [ipaddress] object, but that's for later
     [string]$IPv4Subnet
     [string]$IPv4Gateway    # should be [PFGateway] object, but that's for later
@@ -31,6 +48,7 @@ class PFInterface {
     static $PropertyMapping = @{
         Name = "name"
         Interface = "if"
+        descr = "descr"
         IPv4Address = "ipaddr"
         IPv4Subnet = "subnet"
         IPv4Gateway = "gateway"
@@ -60,6 +78,45 @@ class PFStaticRoute {
     }
 }
 
+class PFGateway{
+    [string]$interface
+    [string]$gateway
+    [string]$monitor
+    [string]$name
+    [string]$weight
+    [string]$ipprotocol
+    [string]$descr
+
+    static [string]$Section = "gateways/gateway_item"
+    static $PropertyMapping = @{
+        interface = "interface"
+        gateway = "gateway"
+        monitor = "monitor"
+        name = "name"
+        weight = "weight"
+        ipprotocol = "ipprotocol"
+        descr = "descr"
+    }
+}
+
+class PFaliases{
+    [string]$name
+    [string]$type
+    [string]$address
+    [string]$descr
+    [string]$detail
+
+    static [string]$Section = "aliases/alias"
+    static $PropertyMapping = @{
+        name = "name"
+        type = "type"
+        address = "address"
+        descr = "descr"
+        detail = "detail"
+    }
+}
+
+
 function ConvertTo-PFObject {
     [CmdletBinding()]
     param (
@@ -68,7 +125,7 @@ function ConvertTo-PFObject {
             [XML]$XML,
         # The object type (e.g. PFInterface, PFStaticRoute, ..) to convert to
         [Parameter(Mandatory=$true, ValueFromPipelineByPropertyName=$true)]
-            [ValidateSet('PFInterface','PFStaticRoute')]
+            [ValidateSet('PFInterface','PFStaticRoute','PFGateway','PFaliases')]
             [string]$PFObjectType
     )
     
@@ -160,6 +217,7 @@ function ConvertTo-PFObject {
     
     end {}
 }
+
 function Format-Xml {
     <#
     .SYNOPSIS
@@ -184,6 +242,24 @@ function Format-Xml {
             $StringWriter.Flush();
             return $StringWriter.ToString();
         }
+}
+
+function convert-PFInterface-Name{
+    [CmdletBinding()]
+    param (
+        [Parameter(Mandatory=$true, ValueFromPipeline=$true)]
+            [Alias('InputObject')]
+            [psobject]$Server,
+        [Parameter(Mandatory=$true, ValueFromPipeline=$true)]
+            [Alias('InputName')]
+            [String]$name
+    )
+    $Interfaces = $Server | Get-PFInterface
+    $IFname = $Interfaces | 
+        Where-Object { $_.Name -eq $name } | 
+            Select-Object -First 1
+            if($IFname.descr){return $IFname.descr}
+            else{return $IFname.name}
 }
 
 function Get-PFConfiguration {
@@ -256,6 +332,32 @@ function Get-PFStaticRoute {
 
     process {
         Get-PFConfiguration -Server $PFServer -Section "staticroutes/route" | ConvertTo-PFObject -PFObjectType PFStaticRoute
+    }
+}
+
+function Get-PFGateway {
+    [CmdletBinding()]
+    param (
+        [Parameter(Mandatory=$true, ValueFromPipeline=$true)]
+            [Alias('InputObject')]
+            [psobject]$Server
+    )
+
+    process {
+        Get-PFConfiguration -Server $PFServer -Section "gateways/gateway_item" | ConvertTo-PFObject -PFObjectType PFGateway
+    }
+}
+
+function Get-PFaliases {
+    [CmdletBinding()]
+    param (
+        [Parameter(Mandatory=$true, ValueFromPipeline=$true)]
+            [Alias('InputObject')]
+            [psobject]$Server
+    )
+
+    process {
+        Get-PFConfiguration -Server $PFServer -Section "aliases/alias" | ConvertTo-PFObject -PFObjectType PFaliases
     }
 }
 
@@ -420,14 +522,15 @@ $PFServer = [psobject]@{
     Credential = $null
     Host = $Server
     Port = $null
-    NoTLS = $false
+    NoTLS = $NoTLS
     SkipCertificateCheck = $true
     SkipConnectionTest = $false    # TODO: implement (is this necessary?)
 }
 
 # Warn the user if no TLS encryption is used
 if($PFServer.NoTLS){
-    Write-Warning "WARNING: your credentials are transmitted over an INSECURE connection!"
+    Write-Warning "your credentials are transmitted over an INSECURE connection!"
+
 }
 
 # Test credentials before we continue. 
@@ -448,15 +551,22 @@ $Interfaces = $PFServer | Get-PFInterface
 # Print all interfaces
 $Interfaces | Format-Table
 
-# Get the if for LAN:
-$IFLAN = $Interfaces | 
-            Where-Object { $_.Name -eq 'LAN' } | 
-                Select-Object -First 1
-Write-Output "LAN has interface $($IFLAN.Interface)"
 
 # Get all config information so that we can see what's inside
-Get-PFStaticRoute -Server $PFServer
+ Get-PFStaticRoute -Server $PFServer 
 
+
+# get the gateway's and convert the interface name to the user defined interface name
+$gatewayvariable = Get-PFGateway -Server $PFServer 
+$gatewayvariable | %{$_.interface = convert-PFInterface-Name -Server $PFServer -name $_.interface}
+$gatewayvariable | Format-Table
+
+
+$aliasses = Get-PFaliases -Server $PFServer
+$aliasses | Format-Table
+ 
+$alias_print | format-table
+#$aliasses | %{$_.address.split(" ");$_.detail.split("||") }
 
 # Function Printe_route{
 # # PFsense_api_xml_rpc.ps1 -server '192.168.0.1' -username 'admin' -Password 'pfsense' -service route -Action print -NoTLS
