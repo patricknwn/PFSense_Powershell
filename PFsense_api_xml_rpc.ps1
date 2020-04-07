@@ -488,8 +488,8 @@ if(-not [string]::IsNullOrWhiteSpace($Username)){
 while(-not (Test-PFCredential -Server $PFServer)){ $PFServer.Credential = Get-Credential }
 
 # Get all config information so that we can see what's inside
-#$XMLConfig = Get-PFConfiguration -Server $PFServer
-#if(-not $XMLConfig){ exit }
+$XMLConfig = Get-PFConfiguration -Server $PFServer
+if(-not $XMLConfig){ exit }
 
 # We have now tested credentials, let's get some stuff
 #$XMLConfig | Get-PFInterface | Format-Table
@@ -506,6 +506,15 @@ $Flow = @{
     "alias" = @{
         "print" = "param(`$InputObject); `$InputObject | Get-PFAlias | Format-Table"
     }
+
+    "gateway" = @{
+        "print" = "param(`$InputObject); `$InputObject | Get-PFGateway | Format-Table"
+    }
+
+    "interface" = @{
+        "print" = "param(`$InputObject); `$InputObject | Get-PFInterface | Format-Table"
+    }
+
 }
 
 # execute requested flow
@@ -513,7 +522,7 @@ try{
     if(-not $Flow.ContainsKey($Service)){  Write-Host "Unknown service '$Service'" -ForegroundColor red; exit 2 }
     if(-not $Flow.$Service.ContainsKey($Action)){ Write-Host "Unknown action '$Action' for service '$Service'" -ForegroundColor red; exit 3 }
 
-    Invoke-Command -ScriptBlock ([ScriptBlock]::Create($Flow.$Service.$Action)) -ArgumentList $PFServer
+    Invoke-Command -ScriptBlock ([ScriptBlock]::Create($Flow.$Service.$Action)) -ArgumentList $XMLConfig
 
 } catch {
     Write-Error $_.Exception
