@@ -29,7 +29,7 @@ cert = cerificates
 class PFInterface {
     [string]$Name
     [string]$Interface
-    [string]$descr
+    [string]$Description
     [string]$IPv4Address    # should be [ipaddress] object, but that's for later
     [string]$IPv4Subnet
     [string]$IPv4Gateway    # should be [PFGateway] object, but that's for later
@@ -48,7 +48,7 @@ class PFInterface {
     static $PropertyMapping = @{
         Name = "name"
         Interface = "if"
-        descr = "descr"
+        Description = "descr"
         IPv4Address = "ipaddr"
         IPv4Subnet = "subnet"
         IPv4Gateway = "gateway"
@@ -79,40 +79,40 @@ class PFStaticRoute {
 }
 
 class PFGateway{
-    [string]$interface
-    [string]$gateway
-    [string]$monitor
-    [string]$name
-    [string]$weight
-    [string]$ipprotocol
-    [string]$descr
+    [string]$Interface
+    [string]$Gateway
+    [string]$Monitor
+    [string]$Name
+    [string]$Weight
+    [string]$IPProtocol
+    [string]$Description
 
     static [string]$Section = "gateways/gateway_item"
     static $PropertyMapping = @{
-        interface = "interface"
-        gateway = "gateway"
-        monitor = "monitor"
-        name = "name"
-        weight = "weight"
-        ipprotocol = "ipprotocol"
-        descr = "descr"
+        Interface = "interface"
+        Gateway = "gateway"
+        Monitor = "monitor"
+        Name = "name"
+        Weight = "weight"
+        IPProtocol = "ipprotocol"
+        Description = "descr"
     }
 }
 
-class PFaliases{
-    [string]$name
-    [string]$type
-    [string]$address
-    [string]$descr
-    [string]$detail
+class PFalias{
+    [string]$Name
+    [string]$Type
+    [string]$Address
+    [string]$Description
+    [string]$Detail
 
     static [string]$Section = "aliases/alias"
     static $PropertyMapping = @{
-        name = "name"
-        type = "type"
-        address = "address"
-        descr = "descr"
-        detail = "detail"
+        Name = "name"
+        Type = "type"
+        Address = "address"
+        Description = "descr"
+        Detail = "detail"
     }
 }
 
@@ -125,7 +125,7 @@ function ConvertTo-PFObject {
             [XML]$XML,
         # The object type (e.g. PFInterface, PFStaticRoute, ..) to convert to
         [Parameter(Mandatory=$true, ValueFromPipelineByPropertyName=$true)]
-            [ValidateSet('PFInterface','PFStaticRoute','PFGateway','PFaliases')]
+            [ValidateSet('PFInterface','PFStaticRoute','PFGateway','PFalias')]
             [string]$PFObjectType
     )
     
@@ -192,32 +192,11 @@ function ConvertTo-PFObject {
             [void]$Collection.Add($Object)
         }
 
-      
-
-        
-
-    #     Select-XML -XPath "//struct/member[name='route']//data/value" | 
-    #     ForEach-Object { # interate over the routes
-    #     $Obj = New-Object PFStaticRoute
-    #     try{
-    #         ForEach($Property in [PFStaticRoute]::AttributeMapping.Keys){ # iterate over all PFStaticRoute properties
-    #             $Obj."$Property" = (Select-XML -XML $_.Node `
-    #                                     -XPath "struct/member[name='$([PFStaticRoute]::AttributeMapping[$Property])']/value/*"
-    #                                 ).Node.InnerText
-    #         }
-
-    #         [void]$Array.Add($Obj)
-    #     } catch {
-    #         Write-Error $_.Exception.Message
-    #         Write-Error $_.ScriptStackTrace
-    #     }                    
-    # }
         return $Collection
     }
     
     end {}
 }
-
 function Format-Xml {
     <#
     .SYNOPSIS
@@ -291,34 +270,7 @@ function Get-PFInterface {
     )
    
     process {
-        Get-PFConfiguration -Server $PFServer -Section "interfaces" | ConvertTo-PFObject -PFObjectType PFInterface
-
-        # Get-PFConfiguration -Server $PFServer -Section "interfaces"
-            # Select-XML -XPath "//param/value/struct/member" | 
-            #     ForEach-Object {                    
-            #         try{
-            #             $If = [PFInterface]@{ Name = (Select-XML -Xml $_.Node -XPath "name").Node.InnerText }                        
-            #             ForEach($Attribute in [PFInterface]::AttributeMapping.Keys){
-            #                 $Node = Select-XML -Xml $_.Node -XPath "value/struct/member[name='$([PFInterface]::AttributeMapping.$Attribute)']/value/*"
-
-            #                 If($Node){ 
-            #                     $If.$Attribute = $Node.Node.InnerText 
-            #                 }
-            #             }
-
-            #             [void]$PFInterfaces.Add($If)
-
-            #         } catch {
-            #             Write-Error $_.Exception.Message
-            #             Write-Error $_.ScriptStackTrace
-            #         }
-            #     }
-
-        return $PFInterfaces
-    }
-
-    end {
-        #Write-Debug "Attach debugger here "
+        return Get-PFConfiguration -Server $PFServer -Section "interfaces" | ConvertTo-PFObject -PFObjectType PFInterface
     }
 }
 
@@ -348,7 +300,7 @@ function Get-PFGateway {
     }
 }
 
-function Get-PFaliases {
+function Get-PFalias {
     [CmdletBinding()]
     param (
         [Parameter(Mandatory=$true, ValueFromPipeline=$true)]
@@ -357,7 +309,7 @@ function Get-PFaliases {
     )
 
     process {
-        Get-PFConfiguration -Server $PFServer -Section "aliases/alias" | ConvertTo-PFObject -PFObjectType PFaliases
+        Get-PFConfiguration -Server $PFServer -Section "aliases/alias" | ConvertTo-PFObject -PFObjectType PFalias
     }
 }
 
@@ -499,9 +451,10 @@ function Test-PFCredential {
             Invoke-PFXMLRPCRequest -Server $Server -Method 'host_firmware_version' | Out-Null
 
         # catch when use of the system is not possible with this credentials
-        } catch [System.Security.Authentication.InvalidCredentialException],[System.Security.AccessControl.PrivilegeNotHeldException] {
+        } catch [System.Security.Authentication.InvalidCredentialException],
+                [System.Security.AccessControl.PrivilegeNotHeldException] {
             Write-Debug $_.Exception.Message
-            Write-Host "ERROR: $($_.Exception.Message)" -ForegroundColor red
+            Write-Output "ERROR: $($_.Exception.Message)" -ForegroundColor red
             return $false
 
         # maybe something happened, but we are able to use the system
@@ -530,7 +483,6 @@ $PFServer = [psobject]@{
 # Warn the user if no TLS encryption is used
 if($PFServer.NoTLS){
     Write-Warning "your credentials are transmitted over an INSECURE connection!"
-
 }
 
 # Test credentials before we continue. 
@@ -562,7 +514,7 @@ $gatewayvariable | %{$_.interface = convert-PFInterface-Name -Server $PFServer -
 $gatewayvariable | Format-Table
 
 
-$aliasses = Get-PFaliases -Server $PFServer
+$aliasses = Get-PFalias -Server $PFServer
 $aliasses | Format-Table
  
 $alias_print | format-table
