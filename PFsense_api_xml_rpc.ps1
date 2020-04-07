@@ -66,6 +66,14 @@ class PFInterface {
     }
 }
 
+class PFServer {
+    [string]$Address
+    [pscredential]$Credential
+    [int]$Port
+    [bool]$NoTLS
+    [bool]$SkipCertificateCheck = $false
+}
+
 class PFStaticRoute {
     [string]$Network
     [string]$Gateway    # should be [PFGateway] object, but that's for later
@@ -94,7 +102,7 @@ class PFGateway{
     }
 }
 
-class PFalias{
+class PFAlias{
     [string]$Name
     [string]$Type
     [string[]]$Address
@@ -224,9 +232,10 @@ function Get-PFConfiguration {
     [CmdletBinding()]
     param (
         [Parameter(Mandatory=$true, ValueFromPipeline=$true)]
-            [Alias('InputObject')]
-            [psobject]$Server,
-        [Parameter(Mandatory=$false, HelpMessage="The section of the configuration you want, e.g. interfaces or system/dnsserver")][string]$Section        
+            [Alias('Server')]
+            [psobject]$InputObject,
+        [Parameter(Mandatory=$false, HelpMessage="The section of the configuration you want, e.g. interfaces or system/dnsserver")]
+            [string]$Section        
     )
     
     begin {
@@ -235,8 +244,18 @@ function Get-PFConfiguration {
         }
     }
     
-    process {        
-        return Invoke-PFXMLRPCRequest -Server $Server -Method 'exec_php' -MethodParameter ('global $config; $toreturn=$config{0};' -f $Section)
+    process {
+        $XMLConfig = $null
+
+        if($InputObject.GetType() -eq [XML]){             
+            $XMLConfig = $InputObject 
+            #TODO: fetch only the relevant section if contains other sections too. Low prio.
+
+        } elseif($InputObject.GetType() -eq [PFServer]){
+            $XMLConfig = Invoke-PFXMLRPCRequest -Server $InputObject -Method 'exec_php' -MethodParameter ('global $config; $toreturn=$config{0};' -f $Section)
+        }
+
+        return $XMLConfig
     }    
 }
 
@@ -244,12 +263,12 @@ function Get-PFInterface {
     [CmdletBinding()]
     param (
         [Parameter(Mandatory=$true, ValueFromPipeline=$true)]
-            [Alias('InputObject')]
-            [psobject]$Server
+            [Alias('Server')]
+            [psobject]$InputObject
     )
    
     process {
-        return Get-PFConfiguration -Server $PFServer -Section "interfaces" | ConvertTo-PFObject -PFObjectType PFInterface
+        return $InputObject | Get-PFConfiguration | ConvertTo-PFObject -PFObjectType PFInterface
     }
 }
 
@@ -270,13 +289,13 @@ function Get-PFGateway {
     [CmdletBinding()]
     param (
         [Parameter(Mandatory=$true, ValueFromPipeline=$true)]
-            [Alias('InputObject')]
-            [psobject]$Server
+            [Alias('Server')]
+            [psobject]$InputObject
     )
 
     process {
-        $Gateways = Get-PFConfiguration -Server $PFServer | ConvertTo-PFObject -PFObjectType PFGateway
-        $Interfaces = Get-PFInterface -Server $PFServer
+        $Gateways = $InputObject | Get-PFConfiguration | ConvertTo-PFObject -PFObjectType PFGateway
+        $Interfaces = $InputObject | Get-PFInterface
 
         ForEach($Gateway in $Gateways){
             $Gateway.Interface = $Interfaces | Where-Object { $_.Name -eq $Gateway.Interface }
@@ -313,7 +332,7 @@ function Invoke-PFXMLRPCRequest {
     param (
         [Parameter(Mandatory=$true, ValueFromPipeline=$true)]
             [Alias('InputObject')]
-            [psobject]$Server,
+            [PFServer]$Server,
         [Parameter(Mandatory=$true, ValueFromPipelineByPropertyName=$true)]
             [ValidateSet('host_firmware_version', 'exec_php', 'exec_shell', 
                          'backup_config_section', 'restore_config_session', 'merge_installedpackages_section', 
@@ -327,7 +346,7 @@ function Invoke-PFXMLRPCRequest {
     
     begin {
         # construct URL and response parameters
-        $URLTemplate = "##SCHEME##://##HOST##:##PORT##/xmlrpc.php"
+        $URLTemplate = "##SCHEME##://##HOST####PORT##/xmlrpc.php"
 
         # templates to construct the request body
         $XMLRequestTemplate =   
@@ -364,8 +383,8 @@ function Invoke-PFXMLRPCRequest {
 
         $URL = $URLTemplate `
                 -replace '##SCHEME##', (($Server.NoTLS) ? 'http' : 'https') `
-                -replace '##HOST##', $Server.Host `
-                -replace '##PORT##', (($Server.Port) ? $Server.Port : '')
+                -replace '##HOST##', $Server.Address `
+                -replace '##PORT##', (($Server.Port) ? ":$($Server.Port)" : '')
                 
         $RequestParams = @{
             ContentType                     = 'text/xml'
@@ -462,13 +481,12 @@ function Test-PFCredential {
 Clear-Host
 
 # TODO: insert logic from my master branch here to validate $Server and populate $PFServer object
-$PFServer = [psobject]@{
+$PFServer = [PFServer]@{
     Credential = $null
-    Host = $Server
+    Address = $Server
     Port = $null
     NoTLS = $NoTLS
     SkipCertificateCheck = $true
-    SkipConnectionTest = $false    # TODO: implement (is this necessary?)
 }
 
 # Warn the user if no TLS encryption is used
@@ -490,14 +508,15 @@ while(-not (Test-PFCredential -Server $PFServer)){ $PFServer.Credential = Get-Cr
 
 # Get all config information so that we can see what's inside
 $XMLConfig = Get-PFConfiguration -Server $PFServer
+if(-not $XMLConfig){ exit }
 
 # We have now tested credentials, let's get some stuff
-$PFServer | Get-PFInterface | Format-Table
+$XMLConfig | Get-PFInterface | Format-Table
 
 # get the gateway's and convert the interface name to the user defined interface name
-Get-PFGateway -Server $PFServer | Format-Table
+$XMLConfig | Get-PFGateway | Format-Table
 
-
+exit
 
 $aliasses = Get-PFalias -Server $PFServer
 $aliasses | Format-Table
