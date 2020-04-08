@@ -30,7 +30,7 @@ class PFInterface {
     [string]$Name
     [string]$Interface
     [string]$Description
-    [string]$IPv4Address    # should be [ipaddress] object, but that's for later
+    [string]$IPv4Address    # should be [ipaddress] object, but that's for later, is a native powershell object
     [string]$IPv4Subnet
     [string]$IPv4Gateway    # should be [PFGateway] object, but that's for later
     [string]$IPv6Address    # should be [ipaddress] object, but that's for later
@@ -102,9 +102,9 @@ class PFGateway{
 class PFalias{
     [string]$Name
     [string]$Type
-    [string]$Address
+    [string[]]$Address
     [string]$Description
-    [string]$Detail
+    [string[]]$Detail
 
     static [string]$Section = "aliases/alias"
     static $PropertyMapping = @{
@@ -115,8 +115,6 @@ class PFalias{
         Detail = "detail"
     }
 }
-
-
 function ConvertTo-PFObject {
     [CmdletBinding()]
     param (
@@ -309,7 +307,9 @@ function Get-PFalias {
     )
 
     process {
-        Get-PFConfiguration -Server $PFServer -Section "aliases/alias" | ConvertTo-PFObject -PFObjectType PFalias
+        $aliassses = Get-PFConfiguration -Server $PFServer -Section "aliases/alias" | ConvertTo-PFObject -PFObjectType PFalias 
+        $aliassses | ForEach-Object {$_.address = $_.address.split(" ");$_.detail = $_.detail.split("||") }
+        $aliassses
     }
 }
 
@@ -515,10 +515,13 @@ $gatewayvariable | Format-Table
 
 
 $aliasses = Get-PFalias -Server $PFServer
+
 $aliasses | Format-Table
- 
-$alias_print | format-table
-$aliasses | %{$_.address.split(" ");$_.detail.split("||") }
+
+
+
+
+# $aliasses | %{$_.address.split(" ");$_.detail.split("||") }
 
 # Function Printe_route{
 # # PFsense_api_xml_rpc.ps1 -server '192.168.0.1' -username 'admin' -Password 'pfsense' -service route -Action print -NoTLS
