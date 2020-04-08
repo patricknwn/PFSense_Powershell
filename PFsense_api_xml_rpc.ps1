@@ -1,16 +1,61 @@
-# $server = "192.168.0.1" ; $username = "Admin" ; $InsecurePassword = "pfsense"
+<#
+
+.SYNOPSIS
+This powershell script uses the xml-rpc feature of the pfsense to modify it.
+
+.DESCRIPTION
+This powershell script uses the xml-rpc feature of the pfsense to connect. It needs a the server addres, username and password to connect. 
+Afther the connection has been made it uses the service and action variable's to modify the pfsense. 
+NoTLS switch make's the script use a not secure connection 
+SkipCertificateCheck switch uses a secure connection, but does not check if the certificate is trusted 
+At this moment the following services are suported: 
+    -interface      print, 
+    -Alias          print, 
+    -Gateway        print,
+    -staticroute    print,
+
+.PARAMETER Server
+the ip address of the pfsense
+
+.PARAMETER Notls
+This switch tells the script to use a non ssl connection
+
+.PARAMETER Username
+the username of the account u want to use to connect to the pfsense
+
+.PARAMETER Service
+The service of the pfsense you want to use
+
+.PARAMETER Action
+The action you want to performe on the Service
+
+.EXAMPLE
+Print a Service, in this case the Interface's:
+./PFsense_api_xml_rpc.ps1 -Server 192.168.0.1 admin pfsense -service Interface -action print -notls -SkipCertificateCheck
+
+.EXAMPLE
+./PFsense_api_xml_rpc.ps1 -Server 192.168.0.1 admin pfsense -service alias -action print -notls -SkipCertificateCheck
+
+.NOTES
+Put some notes here.
+
+.LINK
+https://github.com/RaulGrayskull/PFSense_Powershell
+
+#>
 
 Param
     (
     [Parameter(Mandatory=$true, Position=0,HelpMessage='The Server address')] [String] $Server,
     [Parameter(Mandatory=$false, Position=1,HelpMessage='The Username')] [string] $Username,
     [Parameter(Mandatory=$false, Position=2,HelpMessage='The Password')] [string] $InsecurePassword,
-    [Parameter(Mandatory=$false, Position=3,HelpMessage='The service you would like to talke to')] [PSObject] $service,
-    [Parameter(Mandatory=$false, Position=4,HelpMessage='The action you would like to do on the service')] [PSObject] $Action,
-    [Switch] $NoTLS
+    [Parameter(Mandatory=$false, Position=3,HelpMessage='The service you would like to talke to')] [string] $Service,
+    [Parameter(Mandatory=$false, Position=4,HelpMessage='The action you would like to do on the service')] [string] $Action,
+    [Switch] $NoTLS,
+    [switch] $SkipCertificateCheck
     )
 
-. .\man.ps1
+
 
 # classes to build:
 <#
@@ -22,7 +67,7 @@ filter = firewall
 aliases
 load_balancer
 openvpn
-unbound = dnsresolver
+unbound = dnsresolver <= strange things happen here
 cert = cerificates
 #>
 
@@ -45,8 +90,8 @@ class PFInterface {
     [string]$DHCPv6IAPDLEN
 
     static [string]$Section = "interfaces"
+    # property name as it appears in the XML, insofar it's different from the object's property name
     static $PropertyMapping = @{
-        Name = "name"
         Interface = "if"
         Description = "descr"
         IPv4Address = "ipaddr"
@@ -57,12 +102,21 @@ class PFInterface {
         IPv6Gateway = "gatewayv6"
         Trackv6Interface = "track6-interface"
         Trackv6PrefixId = "track6-prefix-id"
-        BlockBogons = "blockbogons"
-        Media = "media"
-        MediaOpt = "mediaopt"
         DHCPv6DUID = "dhcp6-duid"
         DHCPv6IAPDLEN = "dhcp6-ia-pd-len"
     }
+
+    [string] ToString(){
+        return ([string]::IsNullOrWhiteSpace($this.Description)) ? $this.Name : $this.Description
+    }
+}
+
+class PFServer {
+    [string]$Address
+    [pscredential]$Credential
+    [int]$Port
+    [bool]$NoTLS
+    [bool]$SkipCertificateCheck = $false
 }
 
 class PFStaticRoute {
@@ -71,15 +125,14 @@ class PFStaticRoute {
     [string]$Description
     
     static [string]$Section = "staticroutes/route"
-    static $PropertyMapping = @{
-        Network = "network"
-        Gateway = "gateway"
+    # property name as it appears in the XML, insofar it's different from the object's property name
+    static $PropertyMapping = @{ 
         Description = "descr"
     }
 }
 
-class PFGateway{
-    [string]$Interface
+class PFGateway {
+    [psobject]$Interface
     [string]$Gateway
     [string]$Monitor
     [string]$Name
@@ -88,18 +141,13 @@ class PFGateway{
     [string]$Description
 
     static [string]$Section = "gateways/gateway_item"
+    # property name as it appears in the XML, insofar it's different from the object's property name
     static $PropertyMapping = @{
-        Interface = "interface"
-        Gateway = "gateway"
-        Monitor = "monitor"
-        Name = "name"
-        Weight = "weight"
-        IPProtocol = "ipprotocol"
         Description = "descr"
     }
 }
 
-class PFalias{
+class PFAlias {
     [string]$Name
     [string]$Type
     [string[]]$Address
@@ -107,14 +155,80 @@ class PFalias{
     [string[]]$Detail
 
     static [string]$Section = "aliases/alias"
+    # property name as it appears in the XML, insofar it's different from the object's property name
     static $PropertyMapping = @{
-        Name = "name"
-        Type = "type"
-        Address = "address"
         Description = "descr"
-        Detail = "detail"
     }
 }
+
+class PFunbound {
+    [string[]]$active_interface
+    [string[]]$outgoing_interface
+    [bool]$dnssec
+    [bool]$enable
+    [int]$port
+    [int]$sslport
+    [string[]]$hosts
+    [string[]]$domainoverrides
+
+    static [string]$Section = "unbound"
+    static $PropertyMapping = @{ 
+        active_interface = "active_interface"
+        outgoing_interface = "outgoing_interface"
+    }
+}
+
+class PFnatRule {
+    [string[]]$source
+    [string]$destination    
+    [string]$protocol
+    [string]$target
+    [string]$local_port
+    [string]$interface
+    [string]$Description
+    
+    static [string]$Section = "nat/rule"
+    # property name as it appears in the XML, insofar it's different from the object's property name
+    static $PropertyMapping = @{ 
+        local_port = "local-port"
+        Description = "descr"
+        destination = "destination"
+        
+    }
+}
+
+class PFFirewallRule {
+    [string]$type
+    [string]$ipprotocol
+    [string]$Description
+    [string]$interface
+    [string]$tracker
+    [string]$source
+    [string]$destination
+    [string]$log
+    
+    static [string]$Section = "filter/rule"
+    # property name as it appears in the XML, insofar it's different from the object's property name
+    static $PropertyMapping = @{ 
+        Description = "descr"
+        source = "source"
+
+    }
+}
+
+class PFFirewallseparator {
+    [string]$row
+    [string]$text
+    [string]$color
+    [string]$interface
+
+    static [string]$Section = "filter/separator"
+    # property name as it appears in the XML, insofar it's different from the object's property name
+    static $PropertyMapping = @{ 
+        interface = "if"
+    }
+}
+
 function ConvertTo-PFObject {
     [CmdletBinding()]
     param (
@@ -123,7 +237,7 @@ function ConvertTo-PFObject {
             [XML]$XML,
         # The object type (e.g. PFInterface, PFStaticRoute, ..) to convert to
         [Parameter(Mandatory=$true, ValueFromPipelineByPropertyName=$true)]
-            [ValidateSet('PFInterface','PFStaticRoute','PFGateway','PFalias')]
+            [ValidateSet('PFInterface','PFStaticRoute','PFGateway','PFalias','PFunbound','PFnatRule','PFfirewallRule','PFFirewallseparator')]
             [string]$PFObjectType
     )
     
@@ -165,7 +279,10 @@ function ConvertTo-PFObject {
             $XMLObject = [xml]$XMLObject.Node.OuterXML # weird that it's necessary, but as its own XML object it works           
             $Properties = @{}
 
-            ForEach($Property in $PropertyMapping.Keys){
+            # ForEach($Property in $PropertyMapping.Keys){
+            $Object | Get-Member -MemberType properties | Select-Object -Property Name | ForEach-Object {
+                $Property = $_.Name
+                $XMLProperty = ($PropertyMapping.$Property) ? $PropertyMapping.$Property : $Property.ToLower()
                 $PropertyValue = $null
 
                 # Property Name is a bit special, it can be
@@ -179,8 +296,13 @@ function ConvertTo-PFObject {
                 }
 
                 if(-not $PropertyValue){
-                    $PropertyValueXPath = "//member[name='$($PropertyMapping.$Property)']/value/string"
+                    $PropertyValueXPath = "//member[name='$($XMLProperty)']/value/string"
                     $PropertyValue = (Select-Xml -XML $XMLObject -XPath $PropertyValueXPath).Node.InnerText                    
+                }
+
+                if($Property -eq "source"){
+                    $PropertyValueXPathname = "//member[name='$($XMLProperty)']/value/struct/member/name"
+                    $PropertyValue = (Select-Xml -XML $XMLObject -XPath $PropertyValueXPathname).Node.InnerText
                 }
 
                 $Properties.$Property = $PropertyValue
@@ -221,31 +343,14 @@ function Format-Xml {
         }
 }
 
-function convert-PFInterface-Name{
-    [CmdletBinding()]
-    param (
-        [Parameter(Mandatory=$true, ValueFromPipeline=$true)]
-            [Alias('InputObject')]
-            [psobject]$Server,
-        [Parameter(Mandatory=$true, ValueFromPipeline=$true)]
-            [Alias('InputName')]
-            [String]$name
-    )
-    $Interfaces = $Server | Get-PFInterface
-    $IFname = $Interfaces | 
-        Where-Object { $_.Name -eq $name } | 
-            Select-Object -First 1
-            if($IFname.descr){return $IFname.descr}
-            else{return $IFname.name}
-}
-
 function Get-PFConfiguration {
     [CmdletBinding()]
     param (
         [Parameter(Mandatory=$true, ValueFromPipeline=$true)]
-            [Alias('InputObject')]
-            [psobject]$Server,
-        [Parameter(Mandatory=$false, HelpMessage="The section of the configuration you want, e.g. interfaces or system/dnsserver")][string]$Section        
+            [Alias('Server')]
+            [psobject]$InputObject,
+        [Parameter(Mandatory=$false, HelpMessage="The section of the configuration you want, e.g. interfaces or system/dnsserver")]
+            [string]$Section        
     )
     
     begin {
@@ -254,64 +359,111 @@ function Get-PFConfiguration {
         }
     }
     
-    process {        
-        return Invoke-PFXMLRPCRequest -Server $Server -Method 'exec_php' -MethodParameter ('global $config; $toreturn=$config{0};' -f $Section)
+    process {
+        $XMLConfig = $null
+
+        if($InputObject.GetType() -eq [XML]){             
+            $XMLConfig = $InputObject 
+            #TODO: fetch only the relevant section if contains other sections too. Low prio.
+
+        } elseif($InputObject.GetType() -eq [PFServer]){
+            $XMLConfig = Invoke-PFXMLRPCRequest -Server $InputObject -Method 'exec_php' -MethodParameter ('global $config; $toreturn=$config{0};' -f $Section)
+        }
+
+        return $XMLConfig
     }    
 }
 
 function Get-PFInterface {
     [CmdletBinding()]
-    param (
-        [Parameter(Mandatory=$true, ValueFromPipeline=$true)]
-            [Alias('InputObject')]
-            [psobject]$Server
-    )
-   
-    process {
-        return Get-PFConfiguration -Server $PFServer -Section "interfaces" | ConvertTo-PFObject -PFObjectType PFInterface
-    }
+    param ([Parameter(Mandatory=$true, ValueFromPipeline=$true)][Alias('Server')][psobject]$InputObject)   
+    process { return $InputObject | Get-PFConfiguration | ConvertTo-PFObject -PFObjectType PFInterface }
 }
 
 function Get-PFStaticRoute {
     [CmdletBinding()]
-    param (
-        [Parameter(Mandatory=$true, ValueFromPipeline=$true)]
-            [Alias('InputObject')]
-            [psobject]$Server
-    )
-
-    process {
-        Get-PFConfiguration -Server $PFServer -Section "staticroutes/route" | ConvertTo-PFObject -PFObjectType PFStaticRoute
-    }
+    param ([Parameter(Mandatory=$true, ValueFromPipeline=$true)][Alias('Server')][psobject]$InputObject)
+    process { Get-PFConfiguration -Server $PFServer -Section "staticroutes/route" | ConvertTo-PFObject -PFObjectType PFStaticRoute }
 }
 
 function Get-PFGateway {
     [CmdletBinding()]
-    param (
-        [Parameter(Mandatory=$true, ValueFromPipeline=$true)]
-            [Alias('InputObject')]
-            [psobject]$Server
-    )
+    param ([Parameter(Mandatory=$true, ValueFromPipeline=$true)][Alias('Server')][psobject]$InputObject)
 
     process {
-        Get-PFConfiguration -Server $PFServer -Section "gateways/gateway_item" | ConvertTo-PFObject -PFObjectType PFGateway
+        $Gateways = $InputObject | Get-PFConfiguration | ConvertTo-PFObject -PFObjectType PFGateway
+        $Interfaces = $InputObject | Get-PFInterface
+
+        # replace the text of the gateway with its actual object
+        ForEach($Gateway in $Gateways){
+            $Gateway.Interface = $Interfaces | Where-Object { $_.Name -eq $Gateway.Interface }
+        }
+
+        return $Gateways
     }
 }
 
 function Get-PFalias {
     [CmdletBinding()]
-    param (
-        [Parameter(Mandatory=$true, ValueFromPipeline=$true)]
-            [Alias('InputObject')]
-            [psobject]$Server
-    )
+    param ([Parameter(Mandatory=$true, ValueFromPipeline=$true)][Alias('Server')][psobject]$InputObject)
 
     process {
-        $aliassses = Get-PFConfiguration -Server $PFServer -Section "aliases/alias" | ConvertTo-PFObject -PFObjectType PFalias 
-        $aliassses | ForEach-Object {$_.address = $_.address.split(" ");$_.detail = $_.detail.split("||") }
-        $aliassses
+        $Aliases = $InputObject | Get-PFConfiguration | ConvertTo-PFObject -PFObjectType PFalias 
+        ForEach($Alias in $Aliases){
+            $Alias.Address = $Alias.Address -split " "
+            $Alias.detail = $Alias.detail.split("||") # used .split here because otherwise it would split on each charater
+        }
+        
+        return $Aliases
     }
 }
+
+function Get-PFunbound {
+    [CmdletBinding()]
+    param ([Parameter(Mandatory=$true, ValueFromPipeline=$true)][Alias('Server')][psobject]$InputObject)
+
+    process {
+        $Unbound = $InputObject | Get-PFConfiguration | ConvertTo-PFObject -PFObjectType PFunbound
+
+        return $Unbound
+    }
+}
+
+function Get-PFnatRule {
+    [CmdletBinding()]
+    param ([Parameter(Mandatory=$true, ValueFromPipeline=$true)][Alias('Server')][psobject]$InputObject)
+
+    process {
+        $nat_rules = $InputObject | Get-PFConfiguration | ConvertTo-PFObject -PFObjectType PFnatRule
+        $Interfaces = $InputObject | Get-PFInterface
+
+        # replace the text of the gateway with its actual object
+        ForEach($nat_rule in $nat_rules){
+            $nat_rule.Interface = $Interfaces | Where-Object { $_.Name -eq $nat_rule.Interface }
+        }
+
+        return $nat_rules
+    }
+}
+
+function Get-PFfirewallRule {
+    [CmdletBinding()]
+    param ([Parameter(Mandatory=$true, ValueFromPipeline=$true)][Alias('Server')][psobject]$InputObject)
+
+    process {
+        $firewall_rules = $InputObject | Get-PFConfiguration | ConvertTo-PFObject -PFObjectType PFfirewallRule
+        $Interfaces = $InputObject | Get-PFInterface
+        $firewall_separator = $InputObject | Get-PFConfiguration | ConvertTo-PFObject -PFObjectType PFFirewallseparator
+        # replace the text of the gateway with its actual object
+        ForEach($firewall_rule in $firewall_rules){
+            $firewall_rule.Interface = $Interfaces | Where-Object { $_.Name -eq $firewall_rule.Interface }
+        }
+
+        return $firewall_rules
+        #return $firewall_separator
+    }
+}
+
 
 function Invoke-PFXMLRPCRequest {
     <#
@@ -322,7 +474,7 @@ function Invoke-PFXMLRPCRequest {
     param (
         [Parameter(Mandatory=$true, ValueFromPipeline=$true)]
             [Alias('InputObject')]
-            [psobject]$Server,
+            [PFServer]$Server,
         [Parameter(Mandatory=$true, ValueFromPipelineByPropertyName=$true)]
             [ValidateSet('host_firmware_version', 'exec_php', 'exec_shell', 
                          'backup_config_section', 'restore_config_session', 'merge_installedpackages_section', 
@@ -336,7 +488,7 @@ function Invoke-PFXMLRPCRequest {
     
     begin {
         # construct URL and response parameters
-        $URLTemplate = "##SCHEME##://##HOST##:##PORT##/xmlrpc.php"
+        $URLTemplate = "##SCHEME##://##HOST####PORT##/xmlrpc.php"
 
         # templates to construct the request body
         $XMLRequestTemplate =   
@@ -373,8 +525,8 @@ function Invoke-PFXMLRPCRequest {
 
         $URL = $URLTemplate `
                 -replace '##SCHEME##', (($Server.NoTLS) ? 'http' : 'https') `
-                -replace '##HOST##', $Server.Host `
-                -replace '##PORT##', (($Server.Port) ? $Server.Port : '')
+                -replace '##HOST##', $Server.Address `
+                -replace '##PORT##', (($Server.Port) ? ":$($Server.Port)" : '')
                 
         $RequestParams = @{
             ContentType                     = 'text/xml'
@@ -471,13 +623,12 @@ function Test-PFCredential {
 Clear-Host
 
 # TODO: insert logic from my master branch here to validate $Server and populate $PFServer object
-$PFServer = [psobject]@{
+$PFServer = [PFServer]@{
     Credential = $null
-    Host = $Server
+    Address = $Server
     Port = $null
     NoTLS = $NoTLS
-    SkipCertificateCheck = $true
-    SkipConnectionTest = $false    # TODO: implement (is this necessary?)
+    SkipCertificateCheck = $SkipCertificateCheck
 }
 
 # Warn the user if no TLS encryption is used
@@ -497,26 +648,32 @@ if(-not [string]::IsNullOrWhiteSpace($Username)){
 }
 while(-not (Test-PFCredential -Server $PFServer)){ $PFServer.Credential = Get-Credential }
 
+# Get all config information so that we can see what's inside
+$XMLConfig = Get-PFConfiguration -Server $PFServer
+if(-not $XMLConfig){ exit }
+
 # We have now tested credentials, let's get some stuff
-$Interfaces = $PFServer | Get-PFInterface
+#$XMLConfig | Get-PFInterface | Format-Table
 
-# Print all interfaces
-$Interfaces | Format-Table
+# get the gateways and convert the interface name to the user defined interface name
+#$XMLConfig | Get-PFGateway | Format-Table
 
+# get the aliases that are defined
+#$XMLConfig | Get-PFalias | Format-Table
 
 # Get all config information so that we can see what's inside
- Get-PFStaticRoute -Server $PFServer 
+# Get-PFStaticRoute -Server $PFServer 
 
 
 # get the gateway's and convert the interface name to the user defined interface name
-$gatewayvariable = Get-PFGateway -Server $PFServer 
-$gatewayvariable | %{$_.interface = convert-PFInterface-Name -Server $PFServer -name $_.interface}
-$gatewayvariable | Format-Table
+#$gatewayvariable = Get-PFGateway -Server $PFServer 
+#$gatewayvariable | %{$_.interface = convert-PFInterface-Name -Server $PFServer -name $_.interface}
+#$gatewayvariable | Format-Table
 
 
-$aliasses = Get-PFalias -Server $PFServer
+#$aliasses = Get-PFalias -Server $PFServer
 
-$aliasses | Format-Table
+#$aliasses | Format-Table
 
 
 
@@ -545,27 +702,48 @@ $aliasses | Format-Table
 #     }catch{Write-host "No Static routes Found"}
 # }
 
-# function  print_interface {
-#     $php_command = "global `$config; `$toreturn=`$config['interfaces'];"
-#     $Data = [XML]$(Get-PFConfiguration -php_command $php_command).Content
-#     Write-Host "Interfaces are:" -BackgroundColor White -ForegroundColor Black
-#     Write-Host "Name : Gateway : Description`n`r" -BackgroundColor White -ForegroundColor Black
-#     $interfaces = $data.methodResponse.params.param.value.struct.member
-#     $interfaces[0].value.struct.member[0].name
-#     $interindex = 0
-#     try{
-#         if($interfaces[$interindex].name){
-#             while($interfaces[$interindex].name){
-#                 "{0} : {1} : {2}" -f`
-#                 $interfaces[$interindex].name,`
-#                 $interfaces[$interindex].name,`
-#                 $interfaces[$interindex].name
-#                 $interindex++
-#             }
-#         }
-#         else{"{0} : {1} : {2}" -f $interfaces.name,$interfaces.name,$interfaces.name}
-#     }catch{Write-host "No Interfaces found"}
-# }
+# define the possible execution flows
+$Flow = @{
+    "alias" = @{
+        "print" = "param(`$InputObject); `$InputObject | Get-PFAlias | Format-Table"
+    }
+
+    "gateway" = @{
+        "print" = "param(`$InputObject); `$InputObject | Get-PFGateway | Format-Table"
+    }
+
+    "interface" = @{
+        "print" = "param(`$InputObject); `$InputObject | Get-PFInterface | Format-Table"
+    }
+
+    "StaticRoute" = @{
+        "print" = "param(`$InputObject); `$InputObject | Get-PFStaticRoute | Format-table"
+    }
+
+    "dnsResolver" = @{
+        "print" = "param(`$InputObject); `$InputObject | Get-PFunbound | Format-table"
+    }    
+    "NatRule" = @{
+        "print" = "param(`$InputObject); `$InputObject | Get-PFnatRule | Format-table"
+    }    
+    "Firewall" = @{
+        "print" = "param(`$InputObject); `$InputObject | Get-PFfirewallRule | Format-table"
+    } 
+     
+
+}
+
+# execute requested flow
+try{
+    if(-not $Flow.ContainsKey($Service)){  Write-Host "Unknown service '$Service'" -ForegroundColor red; exit 2 }
+    if(-not $Flow.$Service.ContainsKey($Action)){ Write-Host "Unknown action '$Action' for service '$Service'" -ForegroundColor red; exit 3 }
+
+    Invoke-Command -ScriptBlock ([ScriptBlock]::Create($Flow.$Service.$Action)) -ArgumentList $XMLConfig
+
+} catch {
+    Write-Error $_.Exception
+    exit 1    
+}
 
 
 #TODO: use a nicer structure, probably hashtables :)
