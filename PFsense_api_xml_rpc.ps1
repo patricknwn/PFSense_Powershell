@@ -183,11 +183,11 @@ class PFunbound {
 
 class PFnatRule {
     [string]$source_type
-    [string]$source_network
+    [string]$source_address
     [string]$source_port
-    [string]$destination_type
-    [string]$destination_network
-    [string]$destination_port
+    [string]$dest_type
+    [string]$dest_address
+    [string]$dest_port
     [string]$protocol
     [string]$target
     [string]$local_port
@@ -200,11 +200,11 @@ class PFnatRule {
         local_port = "local-port"
         Description = "descr"
         source_type = "source"
-        source_network = "source"
+        source_address= "source"
         source_port = "source"
-        destination_type = "destination"
-        destination_network = "destination"
-        destination_port = "destination"
+        dest_type = "destination"
+        dest_address= "destination"
+        dest_port = "destination"
         
     }
 }
@@ -218,11 +218,12 @@ class PFFirewallRule {
     [string[]]$interface
     [string]$tracker
     [string]$source_type
-    [string]$source_network
+    [string]$source_address
     [string]$source_port
-    [string]$destination_type
-    [string]$destination_network
-    [string]$destination_port
+    [string]$dest_type
+    [string]$dest_address
+    [string]$dest_port
+    [string]$disabled
     [string]$log
     
     static [string]$Section = "filter/rule"
@@ -230,11 +231,11 @@ class PFFirewallRule {
     static $PropertyMapping = @{ 
         Description = "descr"
         source_type = "source"
-        source_network = "source"
+        source_address= "source"
         source_port = "source"
-        destination_type = "destination"
-        destination_network = "destination"
-        destination_port = "destination"
+        dest_type = "destination"
+        dest_address= "destination"
+        dest_port = "destination"
     }
 }
 
@@ -322,21 +323,22 @@ function ConvertTo-PFObject {
                     $PropertyValue = (Select-Xml -XML $XMLObject -XPath $PropertyValueXPath).Node.InnerText                    
                 }
 
-                if(($Property -eq "source_type") -or ($Property -eq "Destination_type")){
+                if(($Property -eq "source_type") -or ($Property -eq "Dest_type")){
                     $PropertyValueXPathname = "//member[name='$($XMLProperty)']/value/struct/member"
                     $Propertytemp = (Select-Xml -XML $XMLObject -XPath $PropertyValueXPathname)
                     $PropertyValue = "{0}" -f $(if(($Propertytemp.Node.Name -eq "Network") -or ($Propertytemp.Node.Name -eq "address")){$Propertytemp.Node.Name})
                 }
-                elseif(($Property -eq "source_network") -or ($Property -eq "Destination_network")){
+                elseif(($Property -eq "source_address") -or ($Property -eq "Dest_address")){
                     $PropertyValueXPathname = "//member[name='$($XMLProperty)']/value/struct/member"
                     $Propertytemp = (Select-Xml -XML $XMLObject -XPath $PropertyValueXPathname)
                     $PropertyValue = "{0}" -f $(if(($Propertytemp.Node.Name -eq "Network") -or ($Propertytemp.Node.Name -eq "address")){$Propertytemp.Node.value.string})
                 }
-                elseif(($Property -eq "source_port") -or ($Property -eq "Destination_port")){
+                elseif(($Property -eq "source_port") -or ($Property -eq "Dest_port")){
                     $PropertyValueXPathname = "//member[name='$($XMLProperty)']/value/struct/member"
                     $Propertytemp = (Select-Xml -XML $XMLObject -XPath $PropertyValueXPathname)
                     $PropertyValue = if($Propertytemp[1]){$Propertytemp[1].Node.value.string}
-#                    $PropertyValue = ForEach($Property in $Propertytemp){if($property.node.name -eq "Port"){$Property.node.value}}
+
+                    
                 }
                 
                 $Properties.$Property = $PropertyValue
@@ -475,13 +477,14 @@ function Get-PFnatRule {
         ForEach($nat_rule in $nat_rules){
             $nat_rule.Interface = $Interfaces | Where-Object { $_.Name -eq $nat_rule.Interface }
             if($nat_rule.source_type -eq "network"){
-                if($nat_rule.source_network.endswith("ip")){$nat_rule.source_network = "{0} Adress" -f $($Interfaces | Where-Object { $_.Name -eq $nat_rule.source_network.split("ip")})}
-                else{$nat_rule.source_network = "{0} Net" -f $($Interfaces | Where-Object { $_.Name -eq $nat_rule.source_network })}
+                if($nat_rule.source_address.endswith("ip")){$nat_rule.source_address= "{0} Adress" -f $($Interfaces | Where-Object { $_.Name -eq $nat_rule.source_address.split("ip")})}
+                else{$nat_rule.source_address= "{0} Net" -f $($Interfaces | Where-Object { $_.Name -eq $nat_rule.source_address})}
             }
-            if($nat_rule.destination_type -eq "network"){
-                if($nat_rule.destination_network.endswith("ip")){$nat_rule.destination_network = "{0} Adress" -f $($Interfaces | Where-Object { $_.Name -eq $nat_rule.destination_network.split("ip")})}
-                else{$nat_rule.destination_network = "{0} Net" -f $($Interfaces | Where-Object { $_.Name -eq $nat_rule.destination_network })}
+            elseif($nat_rule.dest_type -eq "network"){
+                if($nat_rule.dest_address.endswith("ip")){$nat_rule.dest_address= "{0} Adress" -f $($Interfaces | Where-Object { $_.Name -eq $nat_rule.dest_address.split("ip")})}
+                else{$nat_rule.dest_address= "{0} Net" -f $($Interfaces | Where-Object { $_.Name -eq $nat_rule.dest_address})}
             }
+            elseif($nat_rule.log -eq " "){$nat_rule.log = "Yes"}
         }
 
         return $nat_rules
@@ -505,18 +508,19 @@ function Get-PFfirewallRule {
             $firewall_rule.Interface = $firewall_interface
 
             if($firewall_rule.source_type -eq "network"){
-                if($firewall_rule.source_network.endswith("ip")){$firewall_rule.source_network = "{0} Adress" -f $($Interfaces | Where-Object { $_.Name -eq $firewall_rule.source_network.split("ip")})}
-                else{$firewall_rule.source_network = "{0} Net" -f $($Interfaces | Where-Object { $_.Name -eq $firewall_rule.source_network })}
+                if($firewall_rule.source_address.endswith("ip")){$firewall_rule.source_address= "{0} Adress" -f $($Interfaces | Where-Object { $_.Name -eq $firewall_rule.source_address.split("ip")})}
+                else{$firewall_rule.source_address= "{0} Net" -f $($Interfaces | Where-Object { $_.Name -eq $firewall_rule.source_address})}
                 }
-            if($firewall_rule.destination_type -eq "network"){
-                if($firewall_rule.destination_network.endswith("ip")){$firewall_rule.destination_network = "{0} Adress" -f $($Interfaces | Where-Object { $_.Name -eq $firewall_rule.destination_network.split("ip")})}
-                else{$firewall_rule.destination_network = "{0} Net" -f $($Interfaces | Where-Object { $_.Name -eq $firewall_rule.destination_network })}
+            if($firewall_rule.dest_type -eq "network"){
+                if($firewall_rule.dest_address.endswith("ip")){$firewall_rule.dest_address= "{0} Adress" -f $($Interfaces | Where-Object { $_.Name -eq $firewall_rule.dest_address.split("ip")})}
+                else{$firewall_rule.dest_address= "{0} Net" -f $($Interfaces | Where-Object { $_.Name -eq $firewall_rule.dest_address})}
                 }
         }
 
         return $firewall_rules
         #return $firewall_separator
     }
+
 }
 
 
@@ -707,82 +711,32 @@ while(-not (Test-PFCredential -Server $PFServer)){ $PFServer.Credential = Get-Cr
 $XMLConfig = Get-PFConfiguration -Server $PFServer
 if(-not $XMLConfig){ exit }
 
-# We have now tested credentials, let's get some stuff
-#$XMLConfig | Get-PFInterface | Format-Table
-
-# get the gateways and convert the interface name to the user defined interface name
-#$XMLConfig | Get-PFGateway | Format-Table
-
-# get the aliases that are defined
-#$XMLConfig | Get-PFalias | Format-Table
-
-# Get all config information so that we can see what's inside
-# Get-PFStaticRoute -Server $PFServer 
-
-
-# get the gateway's and convert the interface name to the user defined interface name
-#$gatewayvariable = Get-PFGateway -Server $PFServer 
-#$gatewayvariable | %{$_.interface = convert-PFInterface-Name -Server $PFServer -name $_.interface}
-#$gatewayvariable | Format-Table
-
-
-#$aliasses = Get-PFalias -Server $PFServer
-
-#$aliasses | Format-Table
-
-
-
-
-# $aliasses | %{$_.address.split(" ");$_.detail.split("||") }
-
-# Function Printe_route{
-# # PFsense_api_xml_rpc.ps1 -server '192.168.0.1' -username 'admin' -Password 'pfsense' -service route -Action print -NoTLS
-#     $php_command = "global `$config; `$toreturn=`$config['staticroutes'];"
-#     $Data = [XML]$(Get-PFConfiguration -php_command $php_command).Content
-#     Write-Host "Static routes are:" -BackgroundColor White -ForegroundColor Black
-#     Write-Host "Network : Gateway : Description`n`r" -BackgroundColor White -ForegroundColor Black
-#     $staticroutes = $($Data | Select-Xml -XPath "/methodResponse/params/param/value/struct/member/value/array/data/value")
-#     $routeindex = 0
-#     try{
-#         if($staticroutes[$routeindex]){
-#             while($staticroutes[$routeindex]){
-#                 "{0} : {1} : {2}" -f`
-#                 $staticroutes[$routeindex].Node.struct.member.value[0].string,`
-#                 $staticroutes[$routeindex].Node.struct.member.value[1].string,`
-#                 $staticroutes[$routeindex].Node.struct.member.value[2].string
-#                 $routeindex++
-#             }
-#         }
-#         else{"{0} : {1} : {2}" -f $staticroutes.Node.struct.member.value[0].string,$staticroutes.Node.struct.member.value[1].string,$staticroutes.Node.struct.member.value[2].string}
-#     }catch{Write-host "No Static routes Found"}
-# }
-
 # define the possible execution flows
 $Flow = @{
     "alias" = @{
-        "print" = "param(`$InputObject); `$InputObject | Get-PFAlias | Format-Table"
+        "print" = "param(`$InputObject); `$InputObject | Get-PFAlias | Format-Table *"#the star makes the format table show more than 10 column's
     }
 
     "gateway" = @{
-        "print" = "param(`$InputObject); `$InputObject | Get-PFGateway | Format-Table"
+        "print" = "param(`$InputObject); `$InputObject | Get-PFGateway | Format-Table *"
     }
 
     "interface" = @{
-        "print" = "param(`$InputObject); `$InputObject | Get-PFInterface | Format-Table"
+        "print" = "param(`$InputObject); `$InputObject | Get-PFInterface | Format-Table *"
     }
 
     "StaticRoute" = @{
-        "print" = "param(`$InputObject); `$InputObject | Get-PFStaticRoute | Format-table"
+        "print" = "param(`$InputObject); `$InputObject | Get-PFStaticRoute | Format-table *"
     }
 
     "dnsResolver" = @{
-        "print" = "param(`$InputObject); `$InputObject | Get-PFunbound | Format-table"
+        "print" = "param(`$InputObject); `$InputObject | Get-PFunbound | Format-table *"
     }    
     "portfwd" = @{
-        "print" = "param(`$InputObject); `$InputObject | Get-PFnatRule | Format-table"
+        "print" = "param(`$InputObject); `$InputObject | Get-PFnatRule | Format-table *"
     }    
     "Firewall" = @{
-        "print" = "param(`$InputObject); `$InputObject | Get-PFfirewallRule | Format-table"
+        "print" = "param(`$InputObject); `$InputObject | Get-PFfirewallRule | Format-table * -AutoSize" 
     } 
      
 
@@ -795,88 +749,8 @@ try{
 
     Invoke-Command -ScriptBlock ([ScriptBlock]::Create($Flow.$Service.$Action)) -ArgumentList $XMLConfig
 
+
 } catch {
     Write-Error $_.Exception
     exit 1    
 }
-
-
-#TODO: use a nicer structure, probably hashtables :)
-# $Actions = @{ trigger = [ScriptBlock]::Create("Write-Host -Message 'WOW'") }
-# Invoke-Command $Actions.trigger
-#
-# if (-not $service -or $service -eq "Help" -or $service -eq "H"){$HelpMessageheader
-#     $manall
-#     exit}
-# elseif (-not $action -or $action -eq "Help" -or $action -eq "H"){
-#     if($service -eq "route"){$manroute ; exit}
-#     elseif($service -eq "Interface"){$manint ; exit}
-#     elseif($service -eq "Gateway"){$manGateway ; exit}
-#     elseif($service -eq "dnsresolver"){$mandnsresolver ; exit}
-#     elseif($service -eq "portfwd"){$manportfwd ; exit}
-#     elseif($service -eq "Alias"){$ManAlias ; exit}
-#     elseif($service -eq "VIP"){$ManVIP ; exit}
-#     elseif($service -eq "Firewall"){$ManFirewall ; exit}
-#     }
-
-
-# if ($service -eq "route"){
-#     if ($action -eq "print"){Printe_route}
-#     elseif ($action -eq "add"){add_route}
-#     elseif ($action -eq "delete"){delete_route}  
-# }
-# elseif ($service -eq "Interface"){
-#     if ($action -eq "print"){print_interface}
-# }
-# elseif ($service -eq "Gateway"){
-#     if ($action -eq "print"){print_Gateway}
-#     elseif ($action -eq "add"){add_Gateway }
-#     elseif ($action -eq "delete"){delete_Gateway}
-#     elseif ($action -eq "default"){default_Gateway}
-# }
-# elseif ($service -eq "dnsresolver"){
-#     if ($action -eq "print"){print_dnsresolver}
-#     elseif ($action -eq "UploadCustom"){UploadCustom_dnsresolver}
-#     elseif ($action -eq "addhost"){addhost_dnsresolver}
-#     elseif ($action -eq "Deletehost"){Deletehost_dnsresolver}
-#     elseif ($action -eq "adddomain"){adddomain_dnsresolver}
-#     elseif ($action -eq "deletedomain"){deletedomain_dnsresolver}
-# }
-# elseif ($service -eq "portfwd"){
-#     if ($action -eq "print"){print_portfwd}
-#     elseif ($action -eq "Add"){add_portfwd}
-#     elseif ($action -eq "Delete"){Delete_portfwd}
-# }
-# elseif ($service -eq "Alias"){
-#     if ($action -eq "print"){print_Alias}
-#     elseif ($action -eq "PrintSpecific"){SpecificPrint_Alias}
-#     elseif ($action -eq "add"){add_Alias}
-#     elseif ($action -eq "delete"){delete_Alias}
-#     elseif ($action -eq "addvalue"){addvalue_Alias}
-#     elseif ($action -eq "deletevalue"){deletevalue_Alias}
-# }
-# elseif ($service -eq "Vip"){
-#     if ($action -eq "print"){print_Vip}
-#     elseif ($Action -eq "add"){add_Vip}
-#     elseif ($Action -eq "delete"){delete_Vip}
-# }
-# elseif ($service -eq "Firewall"){
-#     if ($action -eq "print"){print_Firewall}
-#     elseif ($action -eq "add"){addrule_Firewall}
-# }
-# else{"Dit not find {0} please use `"-Server '' -Username '' -Password '' Help`" to see which ones are supported" -f $service}
-# # for example, fetch all the DNS servers
-# #[XML]$response.Content | Select-XML -XPath "//member[name='dnsserver']//string" | ForEach-Object { $_.Node.'#text' }
-
-# # reduce the output to only the requested section:
-# #$php_command = "global `$config; `$toreturn=`$config['system']['staticroutes'];"
-# #$request_body = "<?xml version='1.0' encoding='iso-8859-1'?><methodCall><methodName>pfsense.exec_php</methodName><params><param><value><string>$php_command</string></value></param></params></methodCall>"
-
-# #$response = Invoke-Webrequest  -UseBasicParsing -Authentication basic -Credential $pfsense_credentials -AllowUnencryptedAuthentication `
-# #    -ContentType 'text/xml' `
-# #    -Uri ("http://{0}/xmlrpc.php" -f $server) `
-# #    -Method POST `
-# #    -Body $request_body
-
-# # for example, fetch all the DNS servers
-# #[XML]$response.Content | Select-XML -XPath "//string" | ForEach-Object { $_.Node.'#text' }
