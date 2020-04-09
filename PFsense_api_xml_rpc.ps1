@@ -13,6 +13,9 @@ At this moment the following services are suported:
     -Alias          print, 
     -Gateway        print,
     -staticroute    print,
+    -firewall       print,
+    -portfwd        print,
+    -dnsResolver     print,
 
 .PARAMETER Server
 the ip address of the pfsense
@@ -179,8 +182,12 @@ class PFunbound {
 }
 
 class PFnatRule {
-    [string[]]$source
-    [string]$destination    
+    [string]$source_type
+    [string]$source_network
+    [string]$source_port
+    [string]$destination_type
+    [string]$destination_network
+    [string]$destination_port
     [string]$protocol
     [string]$target
     [string]$local_port
@@ -192,27 +199,42 @@ class PFnatRule {
     static $PropertyMapping = @{ 
         local_port = "local-port"
         Description = "descr"
-        destination = "destination"
+        source_type = "source"
+        source_network = "source"
+        source_port = "source"
+        destination_type = "destination"
+        destination_network = "destination"
+        destination_port = "destination"
         
     }
 }
 
 class PFFirewallRule {
+    [string]$floating
+    [string]$quick
     [string]$type
     [string]$ipprotocol
     [string]$Description
-    [string]$interface
+    [string[]]$interface
     [string]$tracker
-    [string]$source
-    [string]$destination
+    [string]$source_type
+    [string]$source_network
+    [string]$source_port
+    [string]$destination_type
+    [string]$destination_network
+    [string]$destination_port
     [string]$log
     
     static [string]$Section = "filter/rule"
     # property name as it appears in the XML, insofar it's different from the object's property name
     static $PropertyMapping = @{ 
         Description = "descr"
-        source = "source"
-
+        source_type = "source"
+        source_network = "source"
+        source_port = "source"
+        destination_type = "destination"
+        destination_network = "destination"
+        destination_port = "destination"
     }
 }
 
@@ -300,11 +322,23 @@ function ConvertTo-PFObject {
                     $PropertyValue = (Select-Xml -XML $XMLObject -XPath $PropertyValueXPath).Node.InnerText                    
                 }
 
-                if($Property -eq "source"){
-                    $PropertyValueXPathname = "//member[name='$($XMLProperty)']/value/struct/member/name"
-                    $PropertyValue = (Select-Xml -XML $XMLObject -XPath $PropertyValueXPathname).Node.InnerText
+                if(($Property -eq "source_type") -or ($Property -eq "Destination_type")){
+                    $PropertyValueXPathname = "//member[name='$($XMLProperty)']/value/struct/member"
+                    $Propertytemp = (Select-Xml -XML $XMLObject -XPath $PropertyValueXPathname)
+                    $PropertyValue = "{0}" -f $(if(($Propertytemp.Node.Name -eq "Network") -or ($Propertytemp.Node.Name -eq "address")){$Propertytemp.Node.Name})
                 }
-
+                elseif(($Property -eq "source_network") -or ($Property -eq "Destination_network")){
+                    $PropertyValueXPathname = "//member[name='$($XMLProperty)']/value/struct/member"
+                    $Propertytemp = (Select-Xml -XML $XMLObject -XPath $PropertyValueXPathname)
+                    $PropertyValue = "{0}" -f $(if(($Propertytemp.Node.Name -eq "Network") -or ($Propertytemp.Node.Name -eq "address")){$Propertytemp.Node.value.string})
+                }
+                elseif(($Property -eq "source_port") -or ($Property -eq "Destination_port")){
+                    $PropertyValueXPathname = "//member[name='$($XMLProperty)']/value/struct/member"
+                    $Propertytemp = (Select-Xml -XML $XMLObject -XPath $PropertyValueXPathname)
+                    $PropertyValue = if($Propertytemp[1]){$Propertytemp[1].Node.value.string}
+#                    $PropertyValue = ForEach($Property in $Propertytemp){if($property.node.name -eq "Port"){$Property.node.value}}
+                }
+                
                 $Properties.$Property = $PropertyValue
             }
 
@@ -440,6 +474,14 @@ function Get-PFnatRule {
         # replace the text of the gateway with its actual object
         ForEach($nat_rule in $nat_rules){
             $nat_rule.Interface = $Interfaces | Where-Object { $_.Name -eq $nat_rule.Interface }
+            if($nat_rule.source_type -eq "network"){
+                if($nat_rule.source_network.endswith("ip")){$nat_rule.source_network = "{0} Adress" -f $($Interfaces | Where-Object { $_.Name -eq $nat_rule.source_network.split("ip")})}
+                else{$nat_rule.source_network = "{0} Net" -f $($Interfaces | Where-Object { $_.Name -eq $nat_rule.source_network })}
+            }
+            if($nat_rule.destination_type -eq "network"){
+                if($nat_rule.destination_network.endswith("ip")){$nat_rule.destination_network = "{0} Adress" -f $($Interfaces | Where-Object { $_.Name -eq $nat_rule.destination_network.split("ip")})}
+                else{$nat_rule.destination_network = "{0} Net" -f $($Interfaces | Where-Object { $_.Name -eq $nat_rule.destination_network })}
+            }
         }
 
         return $nat_rules
@@ -456,7 +498,20 @@ function Get-PFfirewallRule {
         $firewall_separator = $InputObject | Get-PFConfiguration | ConvertTo-PFObject -PFObjectType PFFirewallseparator
         # replace the text of the gateway with its actual object
         ForEach($firewall_rule in $firewall_rules){
-            $firewall_rule.Interface = $Interfaces | Where-Object { $_.Name -eq $firewall_rule.Interface }
+#            $firewall_rule.Interface = $Interfaces | Where-Object { $_.Name -eq $firewall_rule.Interface }
+            $firewall_interface = @()
+            foreach($firewall_int in $firewall_rule.Interface)
+                {$firewall_interface = $firewall_interface + $($Interfaces | Where-Object { $_.Name -eq $firewall_int})}
+            $firewall_rule.Interface = $firewall_interface
+
+            if($firewall_rule.source_type -eq "network"){
+                if($firewall_rule.source_network.endswith("ip")){$firewall_rule.source_network = "{0} Adress" -f $($Interfaces | Where-Object { $_.Name -eq $firewall_rule.source_network.split("ip")})}
+                else{$firewall_rule.source_network = "{0} Net" -f $($Interfaces | Where-Object { $_.Name -eq $firewall_rule.source_network })}
+                }
+            if($firewall_rule.destination_type -eq "network"){
+                if($firewall_rule.destination_network.endswith("ip")){$firewall_rule.destination_network = "{0} Adress" -f $($Interfaces | Where-Object { $_.Name -eq $firewall_rule.destination_network.split("ip")})}
+                else{$firewall_rule.destination_network = "{0} Net" -f $($Interfaces | Where-Object { $_.Name -eq $firewall_rule.destination_network })}
+                }
         }
 
         return $firewall_rules
@@ -723,7 +778,7 @@ $Flow = @{
     "dnsResolver" = @{
         "print" = "param(`$InputObject); `$InputObject | Get-PFunbound | Format-table"
     }    
-    "NatRule" = @{
+    "portfwd" = @{
         "print" = "param(`$InputObject); `$InputObject | Get-PFnatRule | Format-table"
     }    
     "Firewall" = @{
