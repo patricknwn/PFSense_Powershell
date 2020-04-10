@@ -303,7 +303,6 @@ function ConvertTo-PFObject {
             $XMLObject = [xml]$XMLObject.Node.OuterXML # weird that it's necessary, but as its own XML object it works           
             $Properties = @{}
 
-            # ForEach($Property in $PropertyMapping.Keys){
             $Object | Get-Member -MemberType properties | Select-Object -Property Name | ForEach-Object {
                 $Property = $_.Name
                 $XMLProperty = ($PropertyMapping.$Property) ? $PropertyMapping.$Property : $Property.ToLower()
@@ -420,7 +419,7 @@ function Get-PFInterface {
 function Get-PFStaticRoute {
     [CmdletBinding()]
     param ([Parameter(Mandatory=$true, ValueFromPipeline=$true)][Alias('Server')][psobject]$InputObject)
-    process { Get-PFConfiguration -Server $PFServer -Section "staticroutes/route" | ConvertTo-PFObject -PFObjectType PFStaticRoute }
+    process { return $InputObject | Get-PFConfiguration | ConvertTo-PFObject -PFObjectType PFStaticRoute }
 }
 
 function Get-PFGateway {
@@ -440,7 +439,7 @@ function Get-PFGateway {
     }
 }
 
-function Get-PFalias {
+function Get-PFAlias {
     [CmdletBinding()]
     param ([Parameter(Mandatory=$true, ValueFromPipeline=$true)][Alias('Server')][psobject]$InputObject)
 
