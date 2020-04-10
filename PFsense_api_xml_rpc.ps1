@@ -59,213 +59,21 @@ Param
     )
 
 
-
-# classes to build:
-<#
-dhcpd
-dhcpdv6
-syslog
-nat
-filter = firewall
-aliases
-load_balancer
-openvpn
-unbound = dnsresolver <= strange things happen here
-cert = cerificates
-#>
-
-class PFInterface {
-    [string]$Name
-    [string]$Interface
-    [string]$Description
-    [string]$IPv4Address    # should be [ipaddress] object, but that's for later, is a native powershell object
-    [string]$IPv4Subnet
-    [string]$IPv4Gateway    # should be [PFGateway] object, but that's for later
-    [string]$IPv6Address    # should be [ipaddress] object, but that's for later
-    [string]$IPv6Subnet
-    [string]$IPv6Gateway    # should be [PFGateway] object, but that's for later
-    [string]$Trackv6Interface
-    [string]$Trackv6PrefixId
-    [bool]$BlockBogons
-    [string]$Media
-    [string]$MediaOpt
-    [string]$DHCPv6DUID
-    [string]$DHCPv6IAPDLEN
-
-    static [string]$Section = "interfaces"
-    # property name as it appears in the XML, insofar it's different from the object's property name
-    static $PropertyMapping = @{
-        Interface = "if"
-        Description = "descr"
-        IPv4Address = "ipaddr"
-        IPv4Subnet = "subnet"
-        IPv4Gateway = "gateway"
-        IPv6Address = "ipaddrv6"
-        IPv6Subnet = "subnetv6"
-        IPv6Gateway = "gatewayv6"
-        Trackv6Interface = "track6-interface"
-        Trackv6PrefixId = "track6-prefix-id"
-        DHCPv6DUID = "dhcp6-duid"
-        DHCPv6IAPDLEN = "dhcp6-ia-pd-len"
-    }
-
-    [string] ToString(){
-        return ([string]::IsNullOrWhiteSpace($this.Description)) ? $this.Name : $this.Description
-    }
-}
-
-class PFServer {
-    [string]$Address
-    [pscredential]$Credential
-    [int]$Port
-    [bool]$NoTLS
-    [bool]$SkipCertificateCheck = $false
-    [XML]$XMLConfig
-    [PFInterface[]]$Interfaces
-}
-
-class PFStaticRoute {
-    [string]$Network
-    [string]$Gateway    # should be [PFGateway] object, but that's for later
-    [string]$Description
-    
-    static [string]$Section = "staticroutes/route"
-    # property name as it appears in the XML, insofar it's different from the object's property name
-    static $PropertyMapping = @{ 
-        Description = "descr"
-    }
-}
-
-class PFGateway {
-    [psobject]$Interface
-    [string]$Gateway
-    [string]$Monitor
-    [string]$Name
-    [string]$Weight
-    [string]$IPProtocol
-    [string]$Description
-
-    static [string]$Section = "gateways/gateway_item"
-    # property name as it appears in the XML, insofar it's different from the object's property name
-    static $PropertyMapping = @{
-        Description = "descr"
-    }
-}
-
-class PFAlias {
-    [string]$Name
-    [string]$Type
-    [string[]]$Address
-    [string]$Description
-    [string[]]$Detail
-
-    static [string]$Section = "aliases/alias"
-    # property name as it appears in the XML, insofar it's different from the object's property name
-    static $PropertyMapping = @{
-        Description = "descr"
-    }
-}
-
-class PFunbound {
-    [string[]]$active_interface
-    [string[]]$outgoing_interface
-    [bool]$dnssec
-    [bool]$enable
-    [int]$port
-    [int]$sslport
-    [string[]]$hosts
-    [string[]]$domainoverrides
-
-    static [string]$Section = "unbound"
-    static $PropertyMapping = @{ 
-        active_interface = "active_interface"
-        outgoing_interface = "outgoing_interface"
-    }
-}
-
-class PFnatRule {
-    [string]$SourceType
-    [string]$SourceAddress
-    [string]$SourcePort
-    [string]$DestType
-    [string]$DestAddress
-    [string]$DestPort
-    [string]$protocol
-    [string]$target
-    [string]$LocalPort
-    [string]$interface
-    [string]$Description
-    
-    static [string]$Section = "nat/rule"
-    # property name as it appears in the XML, insofar it's different from the object's property name
-    static $PropertyMapping = @{ 
-        LocalPort = "local-port"
-        Description = "descr"
-        SourceType = "source"
-        SourceAddress= "source"
-        SourcePort = "source"
-        DestType = "destination"
-        DestAddress= "destination"
-        DestPort = "destination"
-        
-    }
-}
-
-class PFFirewallRule {
-    [string]$floating
-    [string]$quick
-    [string]$disabled
-    [string]$log
-    [string]$type
-    [string]$ipprotocol
-    [PFInterface[]]$interface
-#    [string]$tracker , This is not the way the pfsense select's the order so no need to print this
-    [string]$SourceType
-    [string]$SourceAddress
-    [string]$SourcePort
-    [string]$DestType
-    [string]$DestAddress
-    [string]$DestPort
-    [string]$Description
-
-    
-    static [string]$Section = "filter/rule"
-    # property name as it appears in the XML, insofar it's different from the object's property name
-    static $PropertyMapping = @{ 
-        Description = "descr"
-        SourceType = "source"
-        SourceAddress= "source"
-        SourcePort = "source"
-        DestType = "source"
-        DestAddress= "destination"
-        DestPort = "destination"
-    }
-}
-
-class PFFirewallseparator {
-    [string]$row
-    [string]$text
-    [string]$color
-    [string]$interface
-
-    static [string]$Section = "filter/separator"
-    # property name as it appears in the XML, insofar it's different from the object's property name
-    static $PropertyMapping = @{ 
-        interface = "if"
-    }
-}
+# dotsource the classes
+. .\classes.ps1
 
 function ConvertTo-PFObject {
     [CmdletBinding()]
     param (
         ## The XML-RPC response message
-        [Parameter(Mandatory=$true, ValueFromPipeline = $true)]
-            [XML]$XML,
+        [Parameter(Mandatory=$true, ValueFromPipeline = $true, ValueFromPipelineByPropertyName = $true)]
+            [XML]$XMLConfig,
         [Parameter(Mandatory=$true, ValueFromPipelineByPropertyName = $true)]
             [PFServer]$Server,
         # The object type (e.g. PFInterface, PFStaticRoute, ..) to convert to
         [Parameter(Mandatory=$true, ValueFromPipelineByPropertyName=$true)]
-            [ValidateSet('PFInterface','PFStaticRoute','PFGateway','PFalias','PFunbound','PFnatRule','PFfirewallRule','PFFirewallseparator')]
+            [ValidateSet('PFInterface','PFStaticRoute','PFGateway','PFAlias',
+                         'PFUnbound','PFNATRule','PFFirewallRule','PFFirewallSeparator')]
             [string]$PFObjectType
     )
     
@@ -293,7 +101,7 @@ function ConvertTo-PFObject {
         #       XPath to section: /methodResponse/params/param/value/struct/member[name=$section]/value
         # 3) we have only the very specific (sub)section
         #       XPath to section: /methodResponse/params/param/value
-        $XMLSection = Select-Xml -Xml $XML -XPath '/methodResponse/params/param/value'
+        $XMLSection = Select-Xml -Xml $XMLConfig -XPath '/methodResponse/params/param/value'
         ForEach($Subsection in $($Section -split '/')){
             $XMLSubsection = Select-Xml -XML $XMLSection.Node -XPath "./struct/member[name='$Subsection']/value"
             if($XMLSubsection){ $XMLSection = $XMLSubsection }
@@ -304,12 +112,16 @@ function ConvertTo-PFObject {
         #   XPath: ./array/data/value (for index-based array in the original PHP code)
         $XMLObjects = Select-Xml -XML $XMLSection.Node -XPath "./struct/member | ./array/data/value"
         ForEach($XMLObject in $XMLObjects){    
-            $XMLObject = [xml]$XMLObject.Node.OuterXML # weird that it's necessary, but as its own XML object it works           
+            $XMLObject = [XML]$XMLObject.Node.OuterXML # weird that it's necessary, but as its own XML object it works           
             $Properties = @{}
 
-            # loop through each property of $Object. We're interesed in the name only in order to create the array
+            # loop through each property of $Object. We're interesed in the name only in order to create the hashtable $Properties
             # that we then later will use to splat into the object creation.
             $Object | Get-Member -MemberType properties | Select-Object -Property Name | ForEach-Object {
+                # the $Property is the property name, by default that is the same property name as in the XML document.
+                # however, that is not always the case and those exceptions are defined in the [PF...]::PropertyMapping hashtable
+                # if there is such an exception (e.g. $PropertyMapping.$Property has a value), we will use its value instead of the default
+                # the XML has only lowercase property names, to that's why we convert $Property to lowercase
                 $Property = $_.Name
                 $XMLProperty = ($PropertyMapping.$Property) ? $PropertyMapping.$Property : $Property.ToLower()
                 $PropertyValue = $null
@@ -374,11 +186,16 @@ function ConvertTo-PFObject {
                     $PropertyValue = if($Propertytemp[1]){$Propertytemp[1].Node.value.string}
                 }
                 
+                # add the property value to the hashtable. 
+                # If there is a typed (converted) value, prefer that over the unconverted value
                 $Properties.$Property = ($PropertyTypedValue) ? $PropertyTypedValue : $PropertyValue
             }
 
+            # create the new object of type $PFObjectType (e.g. PFInterface, PFFirewallRule, ...)
+            # We instantiate the object with values by splatting the properties hashtable
+            # that we created before. 
             $Object = New-Object -TypeName $PFObjectType -Property $Properties
-            [void]$Collection.Add($Object)
+            $Collection.Add($Object) | Out-Null
         }
 
         return $Collection
@@ -487,7 +304,7 @@ function Get-PFAlias {
     }
 }
 
-function Get-PFunbound {
+function Get-PFUnbound {
     [CmdletBinding()]
     param ([Parameter(Mandatory=$true, ValueFromPipeline=$true)][Alias('Server')][psobject]$InputObject)
 
@@ -498,7 +315,7 @@ function Get-PFunbound {
     }
 }
 
-function Get-PFnatRule {
+function Get-PFNATRule {
     [CmdletBinding()]
     param ([Parameter(Mandatory=$true, ValueFromPipeline=$true)][Alias('Server')][psobject]$InputObject)
 
@@ -550,7 +367,6 @@ function Get-PFFirewallRule {
     }
 
 }
-
 
 function Invoke-PFXMLRPCRequest {
     <#
@@ -740,7 +556,7 @@ $PFServer.XMLConfig = Get-PFConfiguration -Server $PFServer
 if(-not $PFServer.XMLConfig){ exit }
 
 # We will have frequent reference to the [PFInterface] objects, to make them readily available
-$PFServer.interfaces = Get-PFInterface -InputObject $PFServer
+$PFServer.Interfaces = $PFServer | Get-PFInterface
 
 
 # define the possible execution flows
