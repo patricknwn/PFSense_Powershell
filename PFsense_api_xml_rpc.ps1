@@ -120,6 +120,8 @@ class PFServer {
     [int]$Port
     [bool]$NoTLS
     [bool]$SkipCertificateCheck = $false
+    [XML]$XMLConfig
+    [PFInterface[]]$Interfaces
 }
 
 class PFStaticRoute {
@@ -216,7 +218,7 @@ class PFFirewallRule {
     [string]$log
     [string]$type
     [string]$ipprotocol
-    [string[]]$interface
+    [PFInterface[]]$interface
 #    [string]$tracker , This is not the way the pfsense select's the order so no need to print this
     [string]$SourceType
     [string]$SourceAddress
@@ -234,7 +236,7 @@ class PFFirewallRule {
         SourceType = "source"
         SourceAddress= "source"
         SourcePort = "source"
-        DestType = "destination"
+        DestType = "source"
         DestAddress= "destination"
         DestPort = "destination"
     }
@@ -259,6 +261,8 @@ function ConvertTo-PFObject {
         ## The XML-RPC response message
         [Parameter(Mandatory=$true, ValueFromPipeline = $true)]
             [XML]$XML,
+        [Parameter(Mandatory=$true, ValueFromPipelineByPropertyName = $true)]
+            [PFServer]$Server,
         # The object type (e.g. PFInterface, PFStaticRoute, ..) to convert to
         [Parameter(Mandatory=$true, ValueFromPipelineByPropertyName=$true)]
             [ValidateSet('PFInterface','PFStaticRoute','PFGateway','PFalias','PFunbound','PFnatRule','PFfirewallRule','PFFirewallseparator')]
@@ -303,11 +307,13 @@ function ConvertTo-PFObject {
             $XMLObject = [xml]$XMLObject.Node.OuterXML # weird that it's necessary, but as its own XML object it works           
             $Properties = @{}
 
-            # ForEach($Property in $PropertyMapping.Keys){
+            # loop through each property of $Object. We're interesed in the name only in order to create the array
+            # that we then later will use to splat into the object creation.
             $Object | Get-Member -MemberType properties | Select-Object -Property Name | ForEach-Object {
                 $Property = $_.Name
                 $XMLProperty = ($PropertyMapping.$Property) ? $PropertyMapping.$Property : $Property.ToLower()
                 $PropertyValue = $null
+                $PropertyTypedValue = $null
 
                 # Property Name is a bit special, it can be
                 # 1) the key in the associative array
@@ -321,8 +327,36 @@ function ConvertTo-PFObject {
 
                 if(-not $PropertyValue){
                     $PropertyValueXPath = "//member[name='$($XMLProperty)']/value/string"
-                    $PropertyValue = (Select-Xml -XML $XMLObject -XPath $PropertyValueXPath).Node.InnerText                    
+                    $PropertyValue = (Select-Xml -XML $XMLObject -XPath $PropertyValueXPath).Node.InnerText
                 }
+
+                # let's inspect the property definition to see if we need to make any adjustments. Some adjustment that might be required:
+                # - create a collection from a comma-separated string
+                # - explicitly cast the value to a different object type
+                $PropertyDefinition = ($Object | Get-Member -MemberType Properties | Where-Object { $_.Name -eq $Property }).Definition
+                $PropertyType = ($PropertyDefinition.Split(" ") | Select-Object -First 1).Replace("[]", "")
+                $PropertyIsCollection = $PropertyDefinition.Contains("[]")
+                
+                # if the property type is a collection, make sure the $PropertyValue is actually a collection. 
+                # In the XML message, things we want to have as collection are separated by comma
+                if($PropertyIsCollection){
+                    $PropertyValue = $PropertyValue.Split(",")
+                }
+
+                # handle the conversion to our custom objects. For all other objects, we assume that the split
+                # was sufficient. We might improve upon this later if necessary.
+                # for now we support a few types only, but this might increase and need to be refactored if that's the case.
+                $PropertyTypedValue = New-Object System.Collections.ArrayList
+                ForEach($Item in $PropertyValue){
+                    switch($PropertyType){
+                        "PFInterface" {
+                            $PropertyTypedValue.Add(
+                                ($Server.Interfaces | Where-Object { $_.Name -eq $Item })
+                            ) | Out-Null
+                        }
+                    }
+                }
+                
 
                 if(($Property -eq "SourceType") -or ($Property -eq "DestType")){
                     $PropertyValueXPathname = "//member[name='$($XMLProperty)']/value/struct/member"
@@ -338,11 +372,9 @@ function ConvertTo-PFObject {
                     $PropertyValueXPathname = "//member[name='$($XMLProperty)']/value/struct/member"
                     $Propertytemp = (Select-Xml -XML $XMLObject -XPath $PropertyValueXPathname)
                     $PropertyValue = if($Propertytemp[1]){$Propertytemp[1].Node.value.string}
-                
-                    
                 }
                 
-                $Properties.$Property = $PropertyValue
+                $Properties.$Property = ($PropertyTypedValue) ? $PropertyTypedValue : $PropertyValue
             }
 
             $Object = New-Object -TypeName $PFObjectType -Property $Properties
@@ -385,7 +417,7 @@ function Get-PFConfiguration {
     param (
         [Parameter(Mandatory=$true, ValueFromPipeline=$true)]
             [Alias('Server')]
-            [psobject]$InputObject,
+            [PFServer]$InputObject,
         [Parameter(Mandatory=$false, HelpMessage="The section of the configuration you want, e.g. interfaces or system/dnsserver")]
             [string]$Section        
     )
@@ -399,28 +431,28 @@ function Get-PFConfiguration {
     process {
         $XMLConfig = $null
 
-        if($InputObject.GetType() -eq [XML]){             
-            $XMLConfig = $InputObject 
-            #TODO: fetch only the relevant section if contains other sections too. Low prio.
-
-        } elseif($InputObject.GetType() -eq [PFServer]){
+        if($InputObject.XMLConfig -and $InputObject.XMLConfig.GetType() -eq [XML] -and [string]::IsNullOrWhiteSpace($Section)){             
+            $XMLConfig = $InputObject.XMLConfig
+        
+        } else {
             $XMLConfig = Invoke-PFXMLRPCRequest -Server $InputObject -Method 'exec_php' -MethodParameter ('global $config; $toreturn=$config{0};' -f $Section)
         }
-
+        
+        #TODO: fetch only the relevant section if contains other sections too. Low prio.
         return $XMLConfig
     }    
 }
 
 function Get-PFInterface {
     [CmdletBinding()]
-    param ([Parameter(Mandatory=$true, ValueFromPipeline=$true)][Alias('Server')][psobject]$InputObject)   
-    process { return $InputObject | Get-PFConfiguration | ConvertTo-PFObject -PFObjectType PFInterface }
+    param ([Parameter(Mandatory=$true, ValueFromPipeline=$true)][Alias('Server')][PFServer]$InputObject)   
+    process { return $InputObject | Get-PFConfiguration | ConvertTo-PFObject -PFObjectType PFInterface -Server $InputObject }
 }
 
 function Get-PFStaticRoute {
     [CmdletBinding()]
     param ([Parameter(Mandatory=$true, ValueFromPipeline=$true)][Alias('Server')][psobject]$InputObject)
-    process { Get-PFConfiguration -Server $PFServer -Section "staticroutes/route" | ConvertTo-PFObject -PFObjectType PFStaticRoute }
+    process { return $InputObject | Get-PFConfiguration | ConvertTo-PFObject -PFObjectType PFStaticRoute }
 }
 
 function Get-PFGateway {
@@ -440,7 +472,7 @@ function Get-PFGateway {
     }
 }
 
-function Get-PFalias {
+function Get-PFAlias {
     [CmdletBinding()]
     param ([Parameter(Mandatory=$true, ValueFromPipeline=$true)][Alias('Server')][psobject]$InputObject)
 
@@ -492,36 +524,26 @@ function Get-PFnatRule {
     }
 }
 
-function Get-PFfirewallRule {
+function Get-PFFirewallRule {
     [CmdletBinding()]
-    param ([Parameter(Mandatory=$true, ValueFromPipeline=$true)][Alias('Server')][psobject]$InputObject)
+    param ([Parameter(Mandatory=$true, ValueFromPipeline=$true)][Alias('Server')][PFServer]$InputObject)
 
     process {
-        $FirewallRules = $InputObject | Get-PFConfiguration | ConvertTo-PFObject -PFObjectType PFfirewallRule
-        $Interfaces = $InputObject | Get-PFInterface
-        $FirewallSeperator = $InputObject | Get-PFConfiguration | ConvertTo-PFObject -PFObjectType PFFirewallseparator
+        $FirewallRules = $InputObject | Get-PFConfiguration | ConvertTo-PFObject -PFObjectType PFfirewallRule -Server $InputObject
+        # $FirewallSeperator = $InputObject | Get-PFConfiguration | ConvertTo-PFObject -PFObjectType PFFirewallseparator
         # replace the text of the gateway with its actual object
-        ForEach($FirewallRule in $FirewallRules){
-            if($FirewallRule.Interface[1]){
-                $FirewallInterface = @()
-                foreach($FirewallInt in $FirewallRule.Interface)
-                    {$FirewallInterface = $FirewallInterface + $($Interfaces | Where-Object { $_.Name -eq $FirewallInt})}
-                write-host $FirewallInterface
-                $FirewallRule.Interface = $FirewallInterface
-            }
-            else{$FirewallRule.Interface = $Interfaces | Where-Object { $_.Name -eq $FirewallRule.Interface }}
-
-
-            if($FirewallRule.SourceType -eq "network"){
-                if($FirewallRule.SourceAddress.endswith("ip")){$FirewallRule.SourceAddress= "{0} Adress" -f $($Interfaces | Where-Object { $_.Name -eq $FirewallRule.SourceAddress.split("ip")[0]})}
-                else{$FirewallRule.SourceAddress= "{0} Net" -f $($Interfaces | Where-Object { $_.Name -eq $FirewallRule.SourceAddress})}
-                }
-            if($FirewallRule.DestType -eq "network"){
-                if($FirewallRule.DestAddress.endswith("ip")){$FirewallRule.DestAddress= "{0} Adress" -f $($Interfaces | Where-Object { $_.Name -eq $FirewallRule.DestAddress.split("ip")[0]})}
-                else{$FirewallRule.DestAddress= "{0} Net" -f $($Interfaces | Where-Object { $_.Name -eq $FirewallRule.DestAddress})}
-                }
-            if($FirewallRule.log -eq " "){$FirewallRule.log = "Yes"}
-        }
+        # ForEach($FirewallRule in $FirewallRules){
+        #     if($FirewallRule.SourceType -eq "network"){
+        #         if($FirewallRule.SourceAddress.endswith("ip")){
+        #             $FirewallRule.SourceAddress= "{0} Adress" -f $($Interfaces | Where-Object { $_.Name -eq $FirewallRule.SourceAddress.split("ip")[0]})}
+        #         else{$FirewallRule.SourceAddress= "{0} Net" -f $($Interfaces | Where-Object { $_.Name -eq $FirewallRule.SourceAddress})}
+        #         }
+        #     if($FirewallRule.DestType -eq "network"){
+        #         if($FirewallRule.DestAddress.endswith("ip")){$FirewallRule.DestAddress= "{0} Adress" -f $($Interfaces | Where-Object { $_.Name -eq $FirewallRule.DestAddress.split("ip")[0]})}
+        #         else{$FirewallRule.DestAddress= "{0} Net" -f $($Interfaces | Where-Object { $_.Name -eq $FirewallRule.DestAddress})}
+        #         }
+        #     if($FirewallRule.log -eq " "){$FirewallRule.log = "Yes"}
+        # }
 
         return $FirewallRules
         #return $FirewallSeperator
@@ -714,8 +736,12 @@ if(-not [string]::IsNullOrWhiteSpace($Username)){
 while(-not (Test-PFCredential -Server $PFServer)){ $PFServer.Credential = Get-Credential }
 
 # Get all config information so that we can see what's inside
-$XMLConfig = Get-PFConfiguration -Server $PFServer
-if(-not $XMLConfig){ exit }
+$PFServer.XMLConfig = Get-PFConfiguration -Server $PFServer
+if(-not $PFServer.XMLConfig){ exit }
+
+# We will have frequent reference to the [PFInterface] objects, to make them readily available
+$PFServer.interfaces = Get-PFInterface -InputObject $PFServer
+
 
 # define the possible execution flows
 $Flow = @{
@@ -753,7 +779,7 @@ try{
     if(-not $Flow.ContainsKey($Service)){  Write-Host "Unknown service '$Service'" -ForegroundColor red; exit 2 }
     if(-not $Flow.$Service.ContainsKey($Action)){ Write-Host "Unknown action '$Action' for service '$Service'" -ForegroundColor red; exit 3 }
 
-    Invoke-Command -ScriptBlock ([ScriptBlock]::Create($Flow.$Service.$Action)) -ArgumentList $XMLConfig
+    Invoke-Command -ScriptBlock ([ScriptBlock]::Create($Flow.$Service.$Action)) -ArgumentList $PFServer
 
 
 } catch {
