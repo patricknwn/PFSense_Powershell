@@ -502,11 +502,14 @@ function Get-PFfirewallRule {
         $firewall_separator = $InputObject | Get-PFConfiguration | ConvertTo-PFObject -PFObjectType PFFirewallseparator
         # replace the text of the gateway with its actual object
         ForEach($firewall_rule in $firewall_rules){
-#            $firewall_rule.Interface = $Interfaces | Where-Object { $_.Name -eq $firewall_rule.Interface }
-            $firewall_interface = @()
-            foreach($firewall_int in $firewall_rule.Interface)
-                {$firewall_interface = $firewall_interface + $($Interfaces | Where-Object { $_.Name -eq $firewall_int})}
-            $firewall_rule.Interface = $firewall_interface
+            if($firewall_rule.Interface[1]){
+                $firewall_interface = @()
+                foreach($firewall_int in $firewall_rule.Interface)
+                    {$firewall_interface = $firewall_interface + $($Interfaces | Where-Object { $_.Name -eq $firewall_int})}
+                $firewall_rule.Interface = $firewall_interface
+            }
+            else{$firewall_rule.Interface = $Interfaces | Where-Object { $_.Name -eq $firewall_rule.Interface }}
+
 
             if($firewall_rule.source_type -eq "network"){
                 if($firewall_rule.source_address.endswith("ip")){$firewall_rule.source_address= "{0} Adress" -f $($Interfaces | Where-Object { $_.Name -eq $firewall_rule.source_address.split("ip")[0]})}
