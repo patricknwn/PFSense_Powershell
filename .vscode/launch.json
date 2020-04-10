@@ -10,7 +10,7 @@
             "request": "launch",
             "script": "${file}",
             "cwd": "${file}",
-            "args": ["-Server", "10.10.10.5", "-Username", "admin", "-InsecurePassword", "password", "-SkipCertificateCheck", "-Service", "gateway", "-action", "print" ] // , "-Debug" ]
+            "args": ["-Server", "10.10.10.5", "-Username", "admin", "-InsecurePassword", "password", "-SkipCertificateCheck", "-Service", "firewall", "-action", "print" ] // , "-Debug" ]
         }
     ]
 }
