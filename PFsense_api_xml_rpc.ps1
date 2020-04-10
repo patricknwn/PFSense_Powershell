@@ -9,12 +9,12 @@ Afther the connection has been made it uses the service and action variable's to
 NoTLS switch make's the script use a not secure connection 
 SkipCertificateCheck switch uses a secure connection, but does not check if the certificate is trusted 
 At this moment the following services are suported: 
-    -interface      print, 
-    -Alias          print, 
-    -Gateway        print,
-    -staticroute    print,
-    -firewall       print,
-    -portfwd        print,
+    -interface       print, 
+    -Alias           print, 
+    -Gateway         print,
+    -staticroute     print,
+    -firewall        print,
+    -portfwd         print,
     -dnsResolver     print,
 
 .PARAMETER Server
@@ -212,19 +212,20 @@ class PFnatRule {
 class PFFirewallRule {
     [string]$floating
     [string]$quick
+    [string]$disabled
+    [string]$log
     [string]$type
     [string]$ipprotocol
-    [string]$Description
     [string[]]$interface
-    [string]$tracker
+#    [string]$tracker , This is not the way the pfsense select's the order so no need to print this
     [string]$source_type
     [string]$source_address
     [string]$source_port
     [string]$dest_type
     [string]$dest_address
     [string]$dest_port
-    [string]$disabled
-    [string]$log
+    [string]$Description
+
     
     static [string]$Section = "filter/rule"
     # property name as it appears in the XML, insofar it's different from the object's property name
@@ -337,7 +338,7 @@ function ConvertTo-PFObject {
                     $PropertyValueXPathname = "//member[name='$($XMLProperty)']/value/struct/member"
                     $Propertytemp = (Select-Xml -XML $XMLObject -XPath $PropertyValueXPathname)
                     $PropertyValue = if($Propertytemp[1]){$Propertytemp[1].Node.value.string}
-
+                
                     
                 }
                 
@@ -477,14 +478,14 @@ function Get-PFnatRule {
         ForEach($nat_rule in $nat_rules){
             $nat_rule.Interface = $Interfaces | Where-Object { $_.Name -eq $nat_rule.Interface }
             if($nat_rule.source_type -eq "network"){
-                if($nat_rule.source_address.endswith("ip")){$nat_rule.source_address= "{0} Adress" -f $($Interfaces | Where-Object { $_.Name -eq $nat_rule.source_address.split("ip")})}
+                if($nat_rule.source_address.endswith("ip")){$nat_rule.source_address= "{0} Address" -f $($Interfaces | Where-Object { $_.Name -eq $nat_rule.source_address.split("ip")[0]})}
                 else{$nat_rule.source_address= "{0} Net" -f $($Interfaces | Where-Object { $_.Name -eq $nat_rule.source_address})}
             }
-            elseif($nat_rule.dest_type -eq "network"){
-                if($nat_rule.dest_address.endswith("ip")){$nat_rule.dest_address= "{0} Adress" -f $($Interfaces | Where-Object { $_.Name -eq $nat_rule.dest_address.split("ip")})}
+            if($nat_rule.dest_type -eq "network"){
+                if($nat_rule.dest_address.endswith("ip")){$nat_rule.dest_address= "{0} Adress" -f $($Interfaces | Where-Object { $_.Name -eq $nat_rule.dest_address.split("ip")[0]})}
                 else{$nat_rule.dest_address= "{0} Net" -f $($Interfaces | Where-Object { $_.Name -eq $nat_rule.dest_address})}
             }
-            elseif($nat_rule.log -eq " "){$nat_rule.log = "Yes"}
+
         }
 
         return $nat_rules
@@ -508,13 +509,14 @@ function Get-PFfirewallRule {
             $firewall_rule.Interface = $firewall_interface
 
             if($firewall_rule.source_type -eq "network"){
-                if($firewall_rule.source_address.endswith("ip")){$firewall_rule.source_address= "{0} Adress" -f $($Interfaces | Where-Object { $_.Name -eq $firewall_rule.source_address.split("ip")})}
+                if($firewall_rule.source_address.endswith("ip")){$firewall_rule.source_address= "{0} Adress" -f $($Interfaces | Where-Object { $_.Name -eq $firewall_rule.source_address.split("ip")[0]})}
                 else{$firewall_rule.source_address= "{0} Net" -f $($Interfaces | Where-Object { $_.Name -eq $firewall_rule.source_address})}
                 }
             if($firewall_rule.dest_type -eq "network"){
-                if($firewall_rule.dest_address.endswith("ip")){$firewall_rule.dest_address= "{0} Adress" -f $($Interfaces | Where-Object { $_.Name -eq $firewall_rule.dest_address.split("ip")})}
+                if($firewall_rule.dest_address.endswith("ip")){$firewall_rule.dest_address= "{0} Adress" -f $($Interfaces | Where-Object { $_.Name -eq $firewall_rule.dest_address.split("ip")[0]})}
                 else{$firewall_rule.dest_address= "{0} Net" -f $($Interfaces | Where-Object { $_.Name -eq $firewall_rule.dest_address})}
                 }
+            if($firewall_rule.log -eq " "){$firewall_rule.log = "Yes"}
         }
 
         return $firewall_rules
