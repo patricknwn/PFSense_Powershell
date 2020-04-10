@@ -234,7 +234,7 @@ class PFFirewallRule {
         SourceType = "source"
         SourceAddress= "source"
         SourcePort = "source"
-        DestType = "destination"
+        DestType = "source"
         DestAddress= "destination"
         DestPort = "destination"
     }
@@ -320,7 +320,7 @@ function ConvertTo-PFObject {
 
                 if(-not $PropertyValue){
                     $PropertyValueXPath = "//member[name='$($XMLProperty)']/value/string"
-                    $PropertyValue = (Select-Xml -XML $XMLObject -XPath $PropertyValueXPath).Node.InnerText                    
+                    $PropertyValue = (Select-Xml -XML $XMLObject -XPath $PropertyValueXPath).Node.InnerText
                 }
 
                 if(($Property -eq "SourceType") -or ($Property -eq "DestType")){
@@ -501,15 +501,17 @@ function Get-PFfirewallRule {
         $FirewallSeperator = $InputObject | Get-PFConfiguration | ConvertTo-PFObject -PFObjectType PFFirewallseparator
         # replace the text of the gateway with its actual object
         ForEach($FirewallRule in $FirewallRules){
-            if($FirewallRule.Interface[1]){
-                $FirewallInterface = @()
-                foreach($FirewallInt in $FirewallRule.Interface)
-                    {$FirewallInterface = $FirewallInterface + $($Interfaces | Where-Object { $_.Name -eq $FirewallInt})}
-                write-host $FirewallInterface
-                $FirewallRule.Interface = $FirewallInterface
+            # we need to make sure that the interface is an array and not just a string.
+            # this is proof of concept method only, next step is to make it more generic and
+            # try to check the property type in the ConvertTo function
+            if($FirewallRule.Interface.GetType() -eq [string[]] -and $FirewallRule.Interface.Length -eq 1){
+                $FirewallRule.Interface = ($FirewallRule.Interface[0] -split ",")
             }
-            else{$FirewallRule.Interface = $Interfaces | Where-Object { $_.Name -eq $FirewallRule.Interface }}
 
+            # replace the interface text by it's object
+            ForEach($Interface in $FirewallRule.Interface){
+                $Interface = $Interfaces | Where-Object { $_.Name -eq $Interface }
+            }
 
             if($FirewallRule.SourceType -eq "network"){
                 if($FirewallRule.SourceAddress.endswith("ip")){$FirewallRule.SourceAddress= "{0} Adress" -f $($Interfaces | Where-Object { $_.Name -eq $FirewallRule.SourceAddress.split("ip")[0]})}
