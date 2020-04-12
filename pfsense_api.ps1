@@ -49,11 +49,11 @@ https://github.com/RaulGrayskull/PFSense_Powershell
 
 Param
     (
-    [Parameter(Mandatory=$true, Position=0,HelpMessage='The Server address')] [String] $Server,
-    [Parameter(Mandatory=$false, Position=1,HelpMessage='The Username')] [string] $Username,
-    [Parameter(Mandatory=$false, Position=2,HelpMessage='The Password')] [string] $InsecurePassword,
-    [Parameter(Mandatory=$false, Position=3,HelpMessage='The service you would like to talke to')] [string] $Service,
-    [Parameter(Mandatory=$false, Position=4,HelpMessage='The action you would like to do on the service')] [string] $Action,
+    [Parameter(Mandatory=$true, HelpMessage='The pfSense network address (DNS or IP)')] [string] $Server,
+    [Parameter(Mandatory=$false, HelpMessage='The Username')] [string] $Username,
+    [Parameter(Mandatory=$false, HelpMessage='The Password')] [string] $InsecurePassword,
+    [Parameter(Mandatory=$false, HelpMessage='The service you would like to talke to')] [string] $Service,
+    [Parameter(Mandatory=$false, HelpMessage='The action you would like to do on the service')] [string] $Action,
     [Switch] $NoTLS,
     [switch] $SkipCertificateCheck
     )
@@ -390,9 +390,6 @@ function Invoke-PFXMLRPCRequest {
     )
     
     begin {
-        # construct URL and response parameters
-        $URLTemplate = "##SCHEME##://##HOST####PORT##/xmlrpc.php"
-
         # templates to construct the request body
         $XMLRequestTemplate =   
         "<?xml version='1.0' encoding='iso-8859-1'?>" +
@@ -425,12 +422,9 @@ function Invoke-PFXMLRPCRequest {
         $XMLRequest = $XMLRequestTemplate `
                         -replace '##PARAMS##', $XMLMethodParam `
                         -replace'##METHOD##', $Method
+        
+        $URL = $Server.ToString()
 
-        $URL = $URLTemplate `
-                -replace '##SCHEME##', (($Server.NoTLS) ? 'http' : 'https') `
-                -replace '##HOST##', $Server.Address `
-                -replace '##PORT##', (($Server.Port) ? ":$($Server.Port)" : '')
-                
         $RequestParams = @{
             ContentType                     = 'text/xml'
             uri                             = $URL
@@ -454,9 +448,14 @@ function Invoke-PFXMLRPCRequest {
 
         # most likely reason for this error is that the returened message was invalid XML, probably because you messed up ;)
         } catch [System.Management.Automation.RuntimeException] {
-            Write-Debug "The returned content-type was: $($Response.Headers.'Content-Type')"
-            Write-Debug "The message from the server could not be converted to XML. This is what the server returned: $($Response.Content)" 
-            Write-Debug "Your message to the server was: $($XMLRequest)"
+            if(-not $Response){
+                throw [System.TimeoutException]::new("Unable to contact the pfSense XML-RPC server at $URL")
+
+            } else {
+                Write-Debug "The returned content-type was: $($Response.Headers.'Content-Type')"
+                Write-Debug "The message from the server could not be converted to XML. This is what the server returned: $($Response.Content)" 
+                Write-Debug "Your message to the server was: $($XMLRequest)"
+            }
 
         # unknow exception, let the user know
         } catch {
@@ -512,6 +511,10 @@ function Test-PFCredential {
             Write-Output "ERROR: $($_.Exception.Message)" -ForegroundColor red
             return $false
 
+        # catch connection timeout, quit the program when this is detected
+        } catch [System.TimeoutException] {
+            throw $_.Exception
+
         # maybe something happened, but we are able to use the system
         } catch {
             Write-Debug $_.Exception.Message
@@ -522,14 +525,13 @@ function Test-PFCredential {
     }    
 }
 
-## BEGIN OF CONTROLLER LOGIC
+## BEGIN OF CONTROLLER LOGIC, should be moved to a different script later since debugging dotsourced file s*, leave it here for now.
 Clear-Host
 
 # TODO: insert logic from my master branch here to validate $Server and populate $PFServer object
 $PFServer = [PFServer]@{
     Credential = $null
     Address = $Server
-    Port = $null
     NoTLS = $NoTLS
     SkipCertificateCheck = $SkipCertificateCheck
 }
@@ -539,17 +541,27 @@ if($PFServer.NoTLS){
     Write-Warning "your credentials are transmitted over an INSECURE connection!"
 }
 
-# Test credentials before we continue. 
-if(-not [string]::IsNullOrWhiteSpace($Username)){
-    if(-not [string]::IsNullOrWhiteSpace($InsecurePassword)){
-        $Password = ConvertTo-SecureString -String $InsecurePassword -AsPlainText -Force
-        $PFServer.Credential = New-Object System.Management.Automation.PSCredential($Username, $Password) 
+# Test credentials before we continue.
+Write-Progress -Activity "Testing connection and your credentials" -Status "Connecting..." -PercentComplete -1
+try{
+    if(-not [string]::IsNullOrWhiteSpace($Username)){
+        if(-not [string]::IsNullOrWhiteSpace($InsecurePassword)){
+            $Password = ConvertTo-SecureString -String $InsecurePassword -AsPlainText -Force
+            $PFServer.Credential = New-Object System.Management.Automation.PSCredential($Username, $Password) 
 
-    } else {
-        $PFServer.Credential = Get-Credential -UserName $Username
+        } else {
+            $PFServer.Credential = Get-Credential -UserName $Username
+        }
     }
+    while(-not (Test-PFCredential -Server $PFServer)){ $PFServer.Credential = Get-Credential }
+
+} catch [System.TimeoutException] {
+    Write-Error -Message $_.Exception.Message
+    exit 4
+
+} finally {
+    Write-Progress -Activity "Testing connection and your credentials" -Completed
 }
-while(-not (Test-PFCredential -Server $PFServer)){ $PFServer.Credential = Get-Credential }
 
 # Get all config information so that we can see what's inside
 $PFServer.XMLConfig = Get-PFConfiguration -Server $PFServer
@@ -557,7 +569,6 @@ if(-not $PFServer.XMLConfig){ exit }
 
 # We will have frequent reference to the [PFInterface] objects, to make them readily available
 $PFServer.Interfaces = $PFServer | Get-PFInterface
-
 
 # define the possible execution flows
 $Flow = @{
