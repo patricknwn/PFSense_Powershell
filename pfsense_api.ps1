@@ -67,9 +67,10 @@ function ConvertTo-PFObject {
     param (
         ## The XML-RPC response message
         [Parameter(Mandatory=$true, ValueFromPipeline = $true, ValueFromPipelineByPropertyName = $true)]
+            [Alias('server')]
+            [PFServer]$InputObject,
+        [Parameter(Mandatory=$false, ValueFromPipelineByPropertyName = $true)]
             [XML]$XMLConfig,
-        [Parameter(Mandatory=$true, ValueFromPipelineByPropertyName = $true)]
-            [PFServer]$Server,
         # The object type (e.g. PFInterface, PFStaticRoute, ..) to convert to
         [Parameter(Mandatory=$true, ValueFromPipelineByPropertyName=$true)]
             [ValidateSet('PFInterface','PFStaticRoute','PFGateway','PFAlias',
@@ -78,6 +79,8 @@ function ConvertTo-PFObject {
     )
     
     begin {
+        # a supplied XML-RPC message has precedence, but it none is given, the XMLConfig stored in the PFServer object is used
+        $XMLConfig = ($XMLConfig) ? $XMLConfig : $InputObject.XMLConfig
         $Collection = New-Object System.Collections.ArrayList
         $Object = (New-Object -TypeName "$PFObjectType")
         $Section = $Object::Section
@@ -137,6 +140,35 @@ function ConvertTo-PFObject {
                     $PropertyValue = (Select-Xml -XML $XMLObject -XPath $PropertyValueXPath).Node.InnerText
                 }
 
+                # TODO: detect if there is a / in the xml property name
+                #       if there is one (and only one), then split on the slash and find a nice XPath to extract the requested value
+                #       intended purpose is to fetch items that in the PHP source config are an associative array in a universal way, e.g.
+                #       source/type or source/address
+                #       in the firewall rules source => Array( "type" => "network"; "address" => "1.1.1.0/8"; "port" => "8888")
+                #       in the XML, this is translated to:
+                #
+                #   <member>
+                #     <name>source</name>
+                #     <value>
+                #       <struct>
+                #         <member>
+                #           <name>address</name>
+                #           <value>
+                #             <string>1.1.1.0/8</string>
+                #            </value>
+                #         </member>
+                #         <member>
+                #           <name>port</name>
+                #           <value>
+                #             <string>8888</string>
+                #           </value>
+                #         </member>
+                #       </struct>
+                #     </value>
+                # </member>
+                #
+                # TODO: if possible, integrate this logic in the if-statement block below (if(-not $PropertyValue){...}) to make the changes as minimal as possible
+
                 if(-not $PropertyValue){
                     $PropertyValueXPath = "//member[name='$($XMLProperty)']/value/string"
                     $PropertyValue = (Select-Xml -XML $XMLObject -XPath $PropertyValueXPath).Node.InnerText
@@ -163,28 +195,28 @@ function ConvertTo-PFObject {
                     switch($PropertyType){
                         "PFInterface" {
                             $PropertyTypedValue.Add(
-                                ($Server.Interfaces | Where-Object { $_.Name -eq $Item })
+                                ($Server.Config.Interfaces | Where-Object { $_.Name -eq $Item })
                             ) | Out-Null
                         }
                     }
                 }
                 
 
-                if(($Property -eq "SourceType") -or ($Property -eq "DestType")){
-                    $PropertyValueXPathname = "//member[name='$($XMLProperty)']/value/struct/member"
-                    $Propertytemp = (Select-Xml -XML $XMLObject -XPath $PropertyValueXPathname)
-                    $PropertyValue = "{0}" -f $(if(($Propertytemp.Node.Name -eq "Network") -or ($Propertytemp.Node.Name -eq "address")){$Propertytemp.Node.Name})
-                }
-                elseif(($Property -eq "SourceAddress") -or ($Property -eq "DestAddress")){
-                    $PropertyValueXPathname = "//member[name='$($XMLProperty)']/value/struct/member"
-                    $Propertytemp = (Select-Xml -XML $XMLObject -XPath $PropertyValueXPathname)
-                    $PropertyValue = "{0}" -f $(if(($Propertytemp.Node.Name -eq "Network") -or ($Propertytemp.Node.Name -eq "address")){$Propertytemp.Node.value.string})
-                }
-                elseif(($Property -eq "SourcePort") -or ($Property -eq "DestPort")){
-                    $PropertyValueXPathname = "//member[name='$($XMLProperty)']/value/struct/member"
-                    $Propertytemp = (Select-Xml -XML $XMLObject -XPath $PropertyValueXPathname)
-                    $PropertyValue = if($Propertytemp[1]){$Propertytemp[1].Node.value.string}
-                }
+                # if(($Property -eq "SourceType") -or ($Property -eq "DestType")){
+                #     $PropertyValueXPathname = "//member[name='$($XMLProperty)']/value/struct/member"
+                #     $Propertytemp = (Select-Xml -XML $XMLObject -XPath $PropertyValueXPathname)
+                #     $PropertyValue = "{0}" -f $(if(($Propertytemp.Node.Name -eq "Network") -or ($Propertytemp.Node.Name -eq "address")){$Propertytemp.Node.Name})
+                # }
+                # elseif(($Property -eq "SourceAddress") -or ($Property -eq "DestAddress")){
+                #     $PropertyValueXPathname = "//member[name='$($XMLProperty)']/value/struct/member"
+                #     $Propertytemp = (Select-Xml -XML $XMLObject -XPath $PropertyValueXPathname)
+                #     $PropertyValue = "{0}" -f $(if(($Propertytemp.Node.Name -eq "Network") -or ($Propertytemp.Node.Name -eq "address")){$Propertytemp.Node.value.string})
+                # }
+                # elseif(($Property -eq "SourcePort") -or ($Property -eq "DestPort")){
+                #     $PropertyValueXPathname = "//member[name='$($XMLProperty)']/value/struct/member"
+                #     $Propertytemp = (Select-Xml -XML $XMLObject -XPath $PropertyValueXPathname)
+                #     $PropertyValue = if($Propertytemp[1]){$Propertytemp[1].Node.value.string}
+                # }
                 
                 # add the property value to the hashtable. 
                 # If there is a typed (converted) value, prefer that over the unconverted value
@@ -240,6 +272,8 @@ function Get-PFConfiguration {
     )
     
     begin {
+        # Due to some changes, this whole section thing isn't very relevant anymore and might introduce extra bugs.
+        # TODO: consider removing this section thing support
         if(-not [string]::IsNullOrWhiteSpace($Section)){
             $Section = $Section -split "/" | Join-String -Separator "']['" -OutputPrefix "['" -OutputSuffix "']"
         }
@@ -256,7 +290,8 @@ function Get-PFConfiguration {
         }
         
         #TODO: fetch only the relevant section if contains other sections too. Low prio.
-        return $XMLConfig
+        $InputObject.XMLConfig = $XMLConfig
+        return $InputObject
     }    
 }
 
@@ -346,7 +381,7 @@ function Get-PFFirewallRule {
     param ([Parameter(Mandatory=$true, ValueFromPipeline=$true)][Alias('Server')][PFServer]$InputObject)
 
     process {
-        $FirewallRules = $InputObject | Get-PFConfiguration | ConvertTo-PFObject -PFObjectType PFfirewallRule -Server $InputObject
+        $FirewallRules = $InputObject | Get-PFConfiguration | ConvertTo-PFObject -PFObjectType PFfirewallRule
         # $FirewallSeperator = $InputObject | Get-PFConfiguration | ConvertTo-PFObject -PFObjectType PFFirewallseparator
         # replace the text of the gateway with its actual object
         # ForEach($FirewallRule in $FirewallRules){
@@ -564,11 +599,18 @@ try{
 }
 
 # Get all config information so that we can see what's inside
-$PFServer.XMLConfig = Get-PFConfiguration -Server $PFServer
-if(-not $PFServer.XMLConfig){ exit }
+$PFServer = Get-PFConfiguration -Server $PFServer
+if(-not $PFServer.XMLConfig -or $PFServer.XMLConfig.GetType() -ne [XML]){ 
+    Write-Error "Unable to fetch the pfSense configuration."
+    exit 1
+}
 
 # We will have frequent reference to the [PFInterface] objects, to make them readily available
-$PFServer.Interfaces = $PFServer | Get-PFInterface
+$PFServer.Config.Interfaces = $PFServer | Get-PFInterface
+$PFServer.Config.Interfaces | Format-Table *
+$PFServer | Get-PFFirewallRule | Format-Table *
+
+exit
 
 # define the possible execution flows
 $Flow = @{
