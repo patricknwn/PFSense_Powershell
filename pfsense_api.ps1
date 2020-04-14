@@ -381,6 +381,7 @@ function Get-PFFirewallRule {
     param ([Parameter(Mandatory=$true, ValueFromPipeline=$true)][Alias('Server')][PFServer]$InputObject)
 
     process {
+
         $FirewallRules = $InputObject | Get-PFConfiguration | ConvertTo-PFObject -PFObjectType PFfirewallRule
         # $FirewallSeperator = $InputObject | Get-PFConfiguration | ConvertTo-PFObject -PFObjectType PFFirewallseparator
         # replace the text of the gateway with its actual object
@@ -396,6 +397,28 @@ function Get-PFFirewallRule {
         #         }
         #     if($FirewallRule.log -eq " "){$FirewallRule.log = "Yes"}
         # }
+
+#        $Interfaces = $InputObject | Get-PFInterface
+#        $FirewallRules = $InputObject | Get-PFConfiguration | ConvertTo-PFObject -PFObjectType PFfirewallRule -Server $InputObject
+        # 
+#         ForEach($FirewallRule in $FirewallRules){
+#             if($FirewallRule.SourceType -eq "network"){
+#                 if($FirewallRule.SourceAddress.endswith("ip")){
+#                     $FirewallRule.SourceAddress= "{0} Adress" -f $($Interfaces | Where-Object { $_.Name -eq $FirewallRule.SourceAddress.split("ip")[0]})}
+                # ToDo: if empty keep empty
+#                 else{$FirewallRule.SourceAddress= "{0} Net" -f $($Interfaces | Where-Object { $_.Name -eq $FirewallRule.SourceAddress})}
+#                 }
+#            if($FirewallRule.DestType -eq "network"){
+#                if($FirewallRule.DestAddress.endswith("ip")){
+#                    $FirewallRule.DestAddress= "{0} Adress" -f $($Interfaces | Where-Object { $_.Name -eq $FirewallRule.DestAddress.split("ip")[0]})}
+#                    # ToDo: if empty keep empty
+#                # elseif()
+#                else{$FirewallRule.DestAddress= "{0} Net" -f $($Interfaces | Where-Object { $_.Name -eq $FirewallRule.DestAddress})}
+#            }
+
+#             if($FirewallRule.log -eq " "){$FirewallRule.log = "Yes"}
+         }
+
 
         return $FirewallRules
         #return $FirewallSeperator
@@ -615,26 +638,26 @@ exit
 # define the possible execution flows
 $Flow = @{
     "alias" = @{
-        "print" = "param(`$InputObject); `$InputObject | Get-PFAlias | Format-Table *"#the star makes the format table show more than 10 column's
+        "print" = "param(`$InputObject); `$InputObject | Get-PFAlias | Format-Table * -AutoSize"#the star makes the format table show more than 10 column's
     }
 
     "gateway" = @{
-        "print" = "param(`$InputObject); `$InputObject | Get-PFGateway | Format-Table *"
+        "print" = "param(`$InputObject); `$InputObject | Get-PFGateway | Format-Table * -AutoSize"
     }
 
     "interface" = @{
-        "print" = "param(`$InputObject); `$InputObject | Get-PFInterface | Format-Table *"
+        "print" = "param(`$InputObject); `$InputObject | Get-PFInterface | Format-Table * -AutoSize"
     }
 
     "StaticRoute" = @{
-        "print" = "param(`$InputObject); `$InputObject | Get-PFStaticRoute | Format-table *"
+        "print" = "param(`$InputObject); `$InputObject | Get-PFStaticRoute | Format-table * -AutoSize"
     }
 
     "dnsResolver" = @{
-        "print" = "param(`$InputObject); `$InputObject | Get-PFunbound | Format-table *"
+        "print" = "param(`$InputObject); `$InputObject | Get-PFunbound | Format-table * -AutoSize"
     }    
     "portfwd" = @{
-        "print" = "param(`$InputObject); `$InputObject | Get-PFnatRule | Format-table *"
+        "print" = "param(`$InputObject); `$InputObject | Get-PFnatRule | Format-table * -AutoSize"
     }    
     "Firewall" = @{
         "print" = "param(`$InputObject); `$InputObject | Get-PFfirewallRule | Format-table * -AutoSize" 
