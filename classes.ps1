@@ -12,6 +12,88 @@ unbound = dnsresolver <= strange things happen here
 cert = cerificates
 #>
 
+class PFAlias {
+    [string]$Name
+    [string]$Type
+    [string[]]$Address
+    [string]$Description
+    [string[]]$Detail
+
+    static [string]$Section = "aliases/alias"
+    # property name as it appears in the XML, insofar it's different from the object's property name
+    static $PropertyMapping = @{
+        Description = "descr"
+    }
+}
+
+class PFFirewallRule {
+    [bool]$IsFloating = $false
+    [bool]$IsQuick = $false
+    [bool]$IsDisabled = $false
+    [bool]$IsLogged = $false
+    [ValidateSet('pass', 'block', 'reject', '')]
+        [string]$Type
+    [ValidateSet('inet', 'inet6', 'inet46')]
+    [string]$IPProtocol
+    [PFInterface[]]$interface
+    [ValidateSet('tcp', 'udp', 'tcp/udp', 'icmp', 'esp', 'ah', 'gre', 'ipv6', 
+                 'igmp', 'pim', 'ospf', 'tp', 'carp', 'pfsync', '')]
+        [string]$Protocol
+    [string]$SourceType
+    [string]$SourceAddress
+    [string]$SourcePort
+    [string]$DestType
+    [string]$DestAddress
+    [string]$DestPort
+    [string]$Description
+
+    
+    static [string]$Section = "filter/rule"
+    # property name as it appears in the XML, insofar it's different from the object's property name
+    static $PropertyMapping = @{ 
+        IsFloating = "floating"
+        IsQuick = "quick"
+        IsDisabled = "disabled"
+        IsLogged = "log"
+        Description = "descr"
+        SourceType = "source/type"
+        SourceAddress= "source/address"
+        SourcePort = "source/port"
+        DestType = "destination/type"
+        DestAddress= "destination/address"
+        DestPort = "destination/port"
+    }
+}
+
+class PFFirewallSeparator {
+    [string]$row
+    [string]$text
+    [string]$color
+    [string]$interface
+
+    static [string]$Section = "filter/separator"
+    # property name as it appears in the XML, insofar it's different from the object's property name
+    static $PropertyMapping = @{ 
+        interface = "if"
+    }
+}
+
+class PFGateway {
+    [PFInterface]$Interface
+    [string]$Gateway
+    [string]$Monitor
+    [string]$Name
+    [string]$Weight
+    [string]$IPProtocol
+    [string]$Description
+
+    static [string]$Section = "gateways/gateway_item"
+    # property name as it appears in the XML, insofar it's different from the object's property name
+    static $PropertyMapping = @{
+        Description = "descr"
+    }
+}
+
 class PFInterface {
     [string]$Name
     [string]$Interface
@@ -52,75 +134,6 @@ class PFInterface {
     }
 }
 
-class PFServer {
-    [string]$Address
-    [pscredential]$Credential
-    [int]$Port
-    [bool]$NoTLS
-    [bool]$SkipCertificateCheck = $false
-    [XML]$XMLConfig
-    [PFInterface[]]$Interfaces
-}
-
-class PFStaticRoute {
-    [string]$Network
-    [string]$Gateway    # should be [PFGateway] object, but that's for later
-    [string]$Description
-    
-    static [string]$Section = "staticroutes/route"
-    # property name as it appears in the XML, insofar it's different from the object's property name
-    static $PropertyMapping = @{ 
-        Description = "descr"
-    }
-}
-
-class PFGateway {
-    [PFInterface]$Interface
-    [string]$Gateway
-    [string]$Monitor
-    [string]$Name
-    [string]$Weight
-    [string]$IPProtocol
-    [string]$Description
-
-    static [string]$Section = "gateways/gateway_item"
-    # property name as it appears in the XML, insofar it's different from the object's property name
-    static $PropertyMapping = @{
-        Description = "descr"
-    }
-}
-
-class PFAlias {
-    [string]$Name
-    [string]$Type
-    [string[]]$Address
-    [string]$Description
-    [string[]]$Detail
-
-    static [string]$Section = "aliases/alias"
-    # property name as it appears in the XML, insofar it's different from the object's property name
-    static $PropertyMapping = @{
-        Description = "descr"
-    }
-}
-
-class PFUnbound {
-    [PFInterface[]]$active_interface
-    [PFInterface[]]$outgoing_interface
-    [bool]$dnssec
-    [bool]$enable
-    [int]$port
-    [int]$sslport
-    [string[]]$hosts
-    [string[]]$domainoverrides
-
-    static [string]$Section = "unbound"
-    static $PropertyMapping = @{ 
-        active_interface = "active_interface"
-        outgoing_interface = "outgoing_interface"
-    }
-}
-
 class PFNATRule {
     [string]$SourceType
     [string]$SourceAddress
@@ -149,46 +162,48 @@ class PFNATRule {
     }
 }
 
-class PFFirewallRule {
-    [string]$floating
-    [string]$quick
-    [string]$disabled
-    [string]$log
-    [string]$type
-    [string]$ipprotocol
-    [PFInterface[]]$interface
-#    [string]$tracker , This is not the way the pfsense select's the order so no need to print this
-    [string]$SourceType
-    [string]$SourceAddress
-    [string]$SourcePort
-    [string]$DestType
-    [string]$DestAddress
-    [string]$DestPort
-    [string]$Description
-
+class PFServer {
+    [string]$Address
+    [pscredential]$Credential
+    [bool]$NoTLS
+    [bool]$SkipCertificateCheck = $false
+    [XML]$XMLConfig
+    [psobject]$Config = @{
+        Interfaces = $null
+    }
     
-    static [string]$Section = "filter/rule"
+    [string] ToString(){        
+        $Schema = ($this.NoTLS) ? "http" : "https"
+        return ("{0}://{1}/xmlrpc.php" -f $Schema, $this.Address)
+    }
+}
+
+class PFStaticRoute {
+    [string]$Network
+    [string]$Gateway    # should be [PFGateway] object, but that's for later
+    [string]$Description
+    
+    static [string]$Section = "staticroutes/route"
     # property name as it appears in the XML, insofar it's different from the object's property name
     static $PropertyMapping = @{ 
         Description = "descr"
-        SourceType = "source"
-        SourceAddress= "source"
-        SourcePort = "source"
-        DestType = "source"
-        DestAddress= "destination"
-        DestPort = "destination"
     }
 }
 
-class PFFirewallSeparator {
-    [string]$row
-    [string]$text
-    [string]$color
-    [string]$interface
+class PFUnbound {
+    [PFInterface[]]$active_interface
+    [PFInterface[]]$outgoing_interface
+    [bool]$dnssec
+    [bool]$enable
+    [int]$port
+    [int]$sslport
+    [string[]]$hosts
+    [string[]]$domainoverrides
 
-    static [string]$Section = "filter/separator"
-    # property name as it appears in the XML, insofar it's different from the object's property name
+    static [string]$Section = "unbound"
     static $PropertyMapping = @{ 
-        interface = "if"
+        active_interface = "active_interface"
+        outgoing_interface = "outgoing_interface"
     }
 }
+
