@@ -195,7 +195,7 @@ function ConvertTo-PFObject {
                     switch($PropertyType){
                         "PFInterface" {
                             $PropertyTypedValue.Add(
-                                ($Server.Config.Interfaces | Where-Object { $_.Name -eq $Item })
+                                ($InputObject.Config.Interfaces | Where-Object { $_.Name -eq $Item })
                             ) | Out-Null
                         }
                     }
