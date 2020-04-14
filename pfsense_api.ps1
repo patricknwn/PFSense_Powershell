@@ -18,13 +18,14 @@ At this moment the following services are suported:
     -dnsResolver     print,
 
 .PARAMETER Server
-the ip address of the pfsense
-
-.PARAMETER Notls
-This switch tells the script to use a non ssl connection
+the ip/host address of the pfsense XML-RPC listener
 
 .PARAMETER Username
 the username of the account u want to use to connect to the pfsense
+
+.PARAMETER InsecurePassword
+The password of the account you want to use to connect to the pfSense. 
+Be careful when using this as a script argument, since it might end up in terminal logs, SIEM's etc.
 
 .PARAMETER Service
 The service of the pfsense you want to use
@@ -32,15 +33,23 @@ The service of the pfsense you want to use
 .PARAMETER Action
 The action you want to performe on the Service
 
+.PARAMETER NoTLS
+This switch tells the script to use an insecure connection
+
+.PARAMETER SkipCertificateCheck
+This switch tells the script to accept self-signed TLS certificates as valid TLS certificate
+
 .EXAMPLE
 Print a Service, in this case the Interface's:
-./PFsense_api_xml_rpc.ps1 -Server 192.168.0.1 admin pfsense -service Interface -action print -notls -SkipCertificateCheck
+./pfsense_api.ps1 -Server 192.168.0.1 admin pfsense -service Interface -action print -notls -SkipCertificateCheck
 
 .EXAMPLE
-./PFsense_api_xml_rpc.ps1 -Server 192.168.0.1 admin pfsense -service alias -action print -notls -SkipCertificateCheck
+./pfsense_api.ps1 -Server 192.168.0.1 admin pfsense -service alias -action print -notls -SkipCertificateCheck
 
 .NOTES
-Put some notes here.
+Styling and best practises used from Posh: https://poshcode.gitbooks.io/powershell-practice-and-style/content/
+This is a work in progress though and we're not so versed in it yet that we remember every detail.
+And as usual, some personal preferences apply.
 
 .LINK
 https://github.com/RaulGrayskull/PFSense_Powershell
@@ -79,7 +88,7 @@ function ConvertTo-PFObject {
     )
     
     begin {
-        # a supplied XML-RPC message has precedence, but it none is given, the XMLConfig stored in the PFServer object is used
+        # a supplied XML-RPC message has precedence, but if none is given, the XMLConfig stored in the PFServer object is used
         $XMLConfig = ($XMLConfig) ? $XMLConfig : $InputObject.XMLConfig
         $Collection = New-Object System.Collections.ArrayList
         $Object = (New-Object -TypeName "$PFObjectType")
@@ -113,18 +122,21 @@ function ConvertTo-PFObject {
         # Two XPath to get each individual item:
         #   XPath: ./struct/member (for associative array in the original PHP code)
         #   XPath: ./array/data/value (for index-based array in the original PHP code)
+        #
+        # $XMLObjects represent a collection of PF* objects, whereas $XMLObject is the XML representation of one PF* object.
+        # we need to convert the XML into a PowerShell object in order to easily compare it with a baseline configuration or create/update/delete objects.
+        # after making the required adjustments (if any), we can translate the PowerShell objects back into XML-RPC message and upload it to apply the change.
         $XMLObjects = Select-Xml -XML $XMLSection.Node -XPath "./struct/member | ./array/data/value"
         ForEach($XMLObject in $XMLObjects){    
             $XMLObject = [XML]$XMLObject.Node.OuterXML # weird that it's necessary, but as its own XML object it works           
-            $Properties = @{}
+            $Properties = @{}   # hashtable with this object's properties, used for splatting them when actually creating the object.
 
-            # loop through each property of $Object. We're interesed in the name only in order to create the hashtable $Properties
-            # that we then later will use to splat into the object creation.
+            # loop through each property of $Object. We're interesed in the name only in order to populate the hashtable $Properties
             $Object | Get-Member -MemberType properties | Select-Object -Property Name | ForEach-Object {
                 # the $Property is the property name, by default that is the same property name as in the XML document.
                 # however, that is not always the case and those exceptions are defined in the [PF...]::PropertyMapping hashtable
                 # if there is such an exception (e.g. $PropertyMapping.$Property has a value), we will use its value instead of the default
-                # the XML has only lowercase property names, to that's why we convert $Property to lowercase
+                # the XML has only lowercase property names, so that's why we convert $Property to lowercase
                 $Property = $_.Name
                 $XMLProperty = ($PropertyMapping.$Property) ? $PropertyMapping.$Property : $Property.ToLower()
                 $PropertyValue = $null
@@ -135,6 +147,8 @@ function ConvertTo-PFObject {
                 #       XPath: ./member/name
                 # 2) a normal property value in the property array
                 #       XPath: //member[name='name']/value/string
+                #
+                # Only situation 1 requires handling that differs from other properties, so we'll do it first
                 if($Property -eq "Name"){
                     $PropertyValueXPath = "./member/name"
                     $PropertyValue = (Select-Xml -XML $XMLObject -XPath $PropertyValueXPath).Node.InnerText
@@ -169,33 +183,35 @@ function ConvertTo-PFObject {
                 #
                 # TODO: if possible, integrate this logic in the if-statement block below (if(-not $PropertyValue){...}) to make the changes as minimal as possible
 
+                # the special cases above didn't apply (or they didn't yield any value)
+                # let's try the method for getting the property value the "normal" way
                 if(-not $PropertyValue){
                     $PropertyValueXPath = "//member[name='$($XMLProperty)']/value/string"
                     $PropertyValue = (Select-Xml -XML $XMLObject -XPath $PropertyValueXPath).Node.InnerText
                 }
 
                 # let's inspect the property definition to see if we need to make any adjustments. Some adjustment that might be required:
-                # - create a collection from a comma-separated string
+                # - create a collection from a comma/pipe/space-separated string
                 # - explicitly cast the value to a different object type
                 $PropertyDefinition = ($Object | Get-Member -MemberType Properties | Where-Object { $_.Name -eq $Property }).Definition
                 $PropertyType = ($PropertyDefinition.Split(" ") | Select-Object -First 1).Replace("[]", "")
                 $PropertyIsCollection = $PropertyDefinition.Contains("[]")
                 
                 # if the property type is a collection, make sure the $PropertyValue is actually a collection. 
-                # In the XML message, things we want to have as collection are separated by comma
+                # In the XML message, things we want to have as collection are separated by comma, a || or a space (as far as we know now)
                 if($PropertyIsCollection){
-                    $PropertyValue = $PropertyValue.Split(",")
+                    $PropertyValue = $PropertyValue.Split(",") # TODO: implement splitting by || or space or maybe other delimiter too
                 }
 
                 # handle the conversion to our custom objects. For all other objects, we assume that the split
                 # was sufficient. We might improve upon this later if necessary.
-                # for now we support a few types only, but this might increase and need to be refactored if that's the case.
+                # for now we support a few types only, but this might increase and might need to be refactored if that's the case.
                 $PropertyTypedValue = New-Object System.Collections.ArrayList
                 ForEach($Item in $PropertyValue){
                     switch($PropertyType){
                         "PFInterface" {
                             $PropertyTypedValue.Add(
-                                ($Server.Config.Interfaces | Where-Object { $_.Name -eq $Item })
+                                ($InputObject.Config.Interfaces | Where-Object { $_.Name -eq $Item })
                             ) | Out-Null
                         }
                     }
@@ -560,10 +576,11 @@ function Test-PFCredential {
     }    
 }
 
-## BEGIN OF CONTROLLER LOGIC, should be moved to a different script later since debugging dotsourced file s*, leave it here for now.
+## BEGIN OF CONTROLLER LOGIC, should be moved to a different script later in order to be able to dotsource this file in your own scripts.
+# since debugging dotsourced files s*, leave it here for now until we're ready for a first release
+# TODO: create a switch for the program to skip this contoller logic and be able to test dotsourcing this file in your own scripts too.
 Clear-Host
 
-# TODO: insert logic from my master branch here to validate $Server and populate $PFServer object
 $PFServer = [PFServer]@{
     Credential = $null
     Address = $Server
@@ -573,7 +590,7 @@ $PFServer = [PFServer]@{
 
 # Warn the user if no TLS encryption is used
 if($PFServer.NoTLS){
-    Write-Warning "your credentials are transmitted over an INSECURE connection!"
+    Write-Warning "Your administrative level credentials are being transmitted over an INSECURE connection!"
 }
 
 # Test credentials before we continue.
