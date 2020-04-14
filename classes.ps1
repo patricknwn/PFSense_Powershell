@@ -206,4 +206,3 @@ class PFUnbound {
         outgoing_interface = "outgoing_interface"
     }
 }
-
