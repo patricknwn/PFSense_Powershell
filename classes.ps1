@@ -34,12 +34,13 @@ class PFFirewallRule {
     [ValidateSet('pass', 'block', 'reject', '')]
         [string]$Type
     [ValidateSet('inet', 'inet6', 'inet46')]
-    [string]$IPProtocol
+        [string]$IPProtocol
     [PFInterface[]]$interface
     [ValidateSet('tcp', 'udp', 'tcp/udp', 'icmp', 'esp', 'ah', 'gre', 'ipv6', 
                  'igmp', 'pim', 'ospf', 'tp', 'carp', 'pfsync', '')]
         [string]$Protocol
-    [string]$SourceType
+    [ValidateSet('network', 'address', 'any')]
+        [string]$SourceType
     [string]$SourceAddress
     [string]$SourcePort
     [string]$DestType
@@ -56,12 +57,12 @@ class PFFirewallRule {
         IsDisabled = "disabled"
         IsLogged = "log"
         Description = "descr"
-        SourceType = "source/type"
-        SourceAddress= "source/address"
-        SourcePort = "source/port"
-        DestType = "destination/type"
-        DestAddress= "destination/address"
-        DestPort = "destination/port"
+        SourceType = "source/0/name"
+        SourceAddress= "source/0/value"
+        SourcePort = "source/1/value"
+        DestType = "destination/0/name"
+        DestAddress= "destination/0/value"
+        DestPort = "destination/1/value"
     }
 }
 
@@ -79,7 +80,8 @@ class PFFirewallSeparator {
 }
 
 class PFGateway {
-    [PFInterface]$Interface
+#    [PFInterface]$Interface
+    [string]$Interface
     [string]$Gateway
     [string]$Monitor
     [string]$Name
@@ -152,12 +154,12 @@ class PFNATRule {
     static $PropertyMapping = @{ 
         LocalPort = "local-port"
         Description = "descr"
-        SourceType = "source"
-        SourceAddress= "source"
-        SourcePort = "source"
-        DestType = "destination"
-        DestAddress= "destination"
-        DestPort = "destination"
+        SourceType = "source/0/name"
+        SourceAddress= "source/0/value"
+        SourcePort = "source/1/value"
+        DestType = "destination/0/name"
+        DestAddress= "destination/0/value"
+        DestPort = "destination/1/value"
         
     }
 }

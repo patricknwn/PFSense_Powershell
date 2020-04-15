@@ -186,8 +186,20 @@ function ConvertTo-PFObject {
                 # the special cases above didn't apply (or they didn't yield any value)
                 # let's try the method for getting the property value the "normal" way
                 if(-not $PropertyValue){
-                    $PropertyValueXPath = "//member[name='$($XMLProperty)']/value/string"
-                    $PropertyValue = (Select-Xml -XML $XMLObject -XPath $PropertyValueXPath).Node.InnerText
+                    if($(Select-String -InputObject $XMLProperty -Pattern "/" -AllMatches).Matches.count -eq 2){
+                        # i'm using 2 / in the class so i can point to the correct name if multiple excist
+                        $PropertyValueXPathname = "//member[name='$($XMLProperty.split("/")[0])']/value/struct/member"
+                        if($XMLProperty.split("/")[2] -eq "name"){
+                            $PropertyValue = $(Select-Xml -XML $XMLObject -XPath $PropertyValueXPathname)[$($XMLProperty.split("/")[1])].Node.$($XMLProperty.split("/")[2])
+                        } 
+                        else{
+                            $PropertyValue = $(Select-Xml -XML $XMLObject -XPath $PropertyValueXPathname)[$($XMLProperty.split("/")[1])].Node.$($XMLProperty.split("/")[2]).string
+                        }
+                    } 
+                    Else{
+                        $PropertyValueXPath = "//member[name='$($XMLProperty)']/value/string"
+                        $PropertyValue = (Select-Xml -XML $XMLObject -XPath $PropertyValueXPath).Node.InnerText
+                    }
                 }
 
                 # let's inspect the property definition to see if we need to make any adjustments. Some adjustment that might be required:
@@ -199,9 +211,21 @@ function ConvertTo-PFObject {
                 
                 # if the property type is a collection, make sure the $PropertyValue is actually a collection. 
                 # In the XML message, things we want to have as collection are separated by comma, a || or a space (as far as we know now)
+                
+                # This does not work because the detail field is split with || but has spaces as well
+                #if($PropertyIsCollection){
+                #    if($PropertyValue -like "*||*"){$PropertyValue = $PropertyValue.Split("||")}
+                #    elseif($PropertyValue -like "* *"){$PropertyValue = $PropertyValue.Split(" ")}
+                #    elseif($PropertyValue -like "*,*"){$PropertyValue = $PropertyValue.Split(",")}
+                #} 
+                
                 if($PropertyIsCollection){
-                    $PropertyValue = $PropertyValue.Split(",") # TODO: implement splitting by || or space or maybe other delimiter too
+                    if($Property -eq "detail"){$PropertyValue = $PropertyValue.Split("||")}
+                    elseif($Property -eq "address"){$PropertyValue = $PropertyValue.Split(" ")}
+                    else{$PropertyValue = $PropertyValue.Split(",")}
                 }
+
+
 
                 # handle the conversion to our custom objects. For all other objects, we assume that the split
                 # was sufficient. We might improve upon this later if necessary.
@@ -216,23 +240,6 @@ function ConvertTo-PFObject {
                         }
                     }
                 }
-                
-
-                # if(($Property -eq "SourceType") -or ($Property -eq "DestType")){
-                #     $PropertyValueXPathname = "//member[name='$($XMLProperty)']/value/struct/member"
-                #     $Propertytemp = (Select-Xml -XML $XMLObject -XPath $PropertyValueXPathname)
-                #     $PropertyValue = "{0}" -f $(if(($Propertytemp.Node.Name -eq "Network") -or ($Propertytemp.Node.Name -eq "address")){$Propertytemp.Node.Name})
-                # }
-                # elseif(($Property -eq "SourceAddress") -or ($Property -eq "DestAddress")){
-                #     $PropertyValueXPathname = "//member[name='$($XMLProperty)']/value/struct/member"
-                #     $Propertytemp = (Select-Xml -XML $XMLObject -XPath $PropertyValueXPathname)
-                #     $PropertyValue = "{0}" -f $(if(($Propertytemp.Node.Name -eq "Network") -or ($Propertytemp.Node.Name -eq "address")){$Propertytemp.Node.value.string})
-                # }
-                # elseif(($Property -eq "SourcePort") -or ($Property -eq "DestPort")){
-                #     $PropertyValueXPathname = "//member[name='$($XMLProperty)']/value/struct/member"
-                #     $Propertytemp = (Select-Xml -XML $XMLObject -XPath $PropertyValueXPathname)
-                #     $PropertyValue = if($Propertytemp[1]){$Propertytemp[1].Node.value.string}
-                # }
                 
                 # add the property value to the hashtable. 
                 # If there is a typed (converted) value, prefer that over the unconverted value
@@ -275,6 +282,27 @@ function Format-Xml {
             $StringWriter.Flush();
             return $StringWriter.ToString();
         }
+}
+
+function ConvertSourceDestinationAddress{
+    [CmdletBinding()]
+    param ([Parameter(Mandatory=$true, ValueFromPipeline=$true)][Alias('Rules')][psobject]$SourceDestinationHasTable,
+           [Parameter(Mandatory=$true, ValueFromPipeline=$true)][Alias('Server')][PFServer]$InputObject)
+    process {
+        # I have kept the name conversion for the source and destination address out of the ConvertTo-PFObject because this is only used for two services
+        ForEach($Item in $SourceDestinationHasTable){
+            if($Item.SourceType -eq "network"){
+                if($Item.SourceAddress.endswith("ip")){
+                    $Item.SourceAddress= "{0} Adress" -f $($InputObject.Config.Interfaces | Where-Object { $_.Name -eq $Item.SourceAddress.split("ip")[0]})}
+                else{$Item.SourceAddress= "{0} Net" -f $($InputObject.Config.Interfaces | Where-Object { $_.Name -eq $Item.SourceAddress})}
+                }
+            if($Item.DestType -eq "network"){
+                if($Item.DestAddress.endswith("ip")){$Item.DestAddress= "{0} Adress" -f $($InputObject.Config.Interfaces | Where-Object { $_.Name -eq $Item.DestAddress.split("ip")[0]})}
+                else{$Item.DestAddress= "{0} Net" -f $($InputObject.Config.Interfaces | Where-Object { $_.Name -eq $Item.DestAddress})}
+                }
+        
+        }
+    }
 }
 
 function Get-PFConfiguration {
@@ -325,32 +353,16 @@ function Get-PFStaticRoute {
 
 function Get-PFGateway {
     [CmdletBinding()]
-    param ([Parameter(Mandatory=$true, ValueFromPipeline=$true)][Alias('Server')][psobject]$InputObject)
-
-    process {
-        $Gateways = $InputObject | Get-PFConfiguration | ConvertTo-PFObject -PFObjectType PFGateway
-        $Interfaces = $InputObject | Get-PFInterface
-
-        # replace the text of the gateway with its actual object
-        ForEach($Gateway in $Gateways){
-            $Gateway.Interface = $Interfaces | Where-Object { $_.Name -eq $Gateway.Interface }
-        }
-
-        return $Gateways
-    }
+    param ([Parameter(Mandatory=$true, ValueFromPipeline=$true)][Alias('Server')][PFServer]$InputObject)
+    process { return $InputObject | Get-PFConfiguration | ConvertTo-PFObject -PFObjectType PFGateway }
 }
+
 
 function Get-PFAlias {
     [CmdletBinding()]
-    param ([Parameter(Mandatory=$true, ValueFromPipeline=$true)][Alias('Server')][psobject]$InputObject)
-
+    param ([Parameter(Mandatory=$true, ValueFromPipeline=$true)][Alias('Server')][PFServer]$InputObject)
     process {
-        $Aliases = $InputObject | Get-PFConfiguration | ConvertTo-PFObject -PFObjectType PFalias 
-        ForEach($Alias in $Aliases){
-            $Alias.Address = $Alias.Address -split " "
-            $Alias.detail = $Alias.detail.split("||") # used .split here because otherwise it would split on each charater
-        }
-        
+        $Aliases = $InputObject | Get-PFConfiguration | ConvertTo-PFObject -PFObjectType PFalias
         return $Aliases
     }
 }
@@ -366,30 +378,16 @@ function Get-PFUnbound {
     }
 }
 
+
 function Get-PFNATRule {
     [CmdletBinding()]
-    param ([Parameter(Mandatory=$true, ValueFromPipeline=$true)][Alias('Server')][psobject]$InputObject)
-
+    param ([Parameter(Mandatory=$true, ValueFromPipeline=$true)][Alias('Server')][PFServer]$InputObject)
     process {
         $NatRules = $InputObject | Get-PFConfiguration | ConvertTo-PFObject -PFObjectType PFnatRule
-        $Interfaces = $InputObject | Get-PFInterface
-
-        # replace the text of the gateway with its actual object
-        ForEach($NatRule in $NatRules){
-            $NatRule.Interface = $Interfaces | Where-Object { $_.Name -eq $NatRule.Interface }
-            if($NatRule.SourceType -eq "network"){
-                if($NatRule.SourceAddress.endswith("ip")){$NatRule.SourceAddress= "{0} Address" -f $($Interfaces | Where-Object { $_.Name -eq $NatRule.SourceAddress.split("ip")[0]})}
-                else{$NatRule.SourceAddress= "{0} Net" -f $($Interfaces | Where-Object { $_.Name -eq $NatRule.SourceAddress})}
-            }
-            if($NatRule.DestType -eq "network"){
-                if($NatRule.DestAddress.endswith("ip")){$NatRule.DestAddress= "{0} Adress" -f $($Interfaces | Where-Object { $_.Name -eq $NatRule.DestAddress.split("ip")[0]})}
-                else{$NatRule.DestAddress= "{0} Net" -f $($Interfaces | Where-Object { $_.Name -eq $NatRule.DestAddress})}
-            }
-
-        }
-
+        ConvertSourceDestinationAddress -SourceDestinationHasTable $NatRules -InputObject $InputObject
         return $NatRules
     }
+
 }
 
 function Get-PFFirewallRule {
@@ -398,23 +396,10 @@ function Get-PFFirewallRule {
 
     process {
         $FirewallRules = $InputObject | Get-PFConfiguration | ConvertTo-PFObject -PFObjectType PFfirewallRule
-        # $FirewallSeperator = $InputObject | Get-PFConfiguration | ConvertTo-PFObject -PFObjectType PFFirewallseparator
-        # replace the text of the gateway with its actual object
-        # ForEach($FirewallRule in $FirewallRules){
-        #     if($FirewallRule.SourceType -eq "network"){
-        #         if($FirewallRule.SourceAddress.endswith("ip")){
-        #             $FirewallRule.SourceAddress= "{0} Adress" -f $($Interfaces | Where-Object { $_.Name -eq $FirewallRule.SourceAddress.split("ip")[0]})}
-        #         else{$FirewallRule.SourceAddress= "{0} Net" -f $($Interfaces | Where-Object { $_.Name -eq $FirewallRule.SourceAddress})}
-        #         }
-        #     if($FirewallRule.DestType -eq "network"){
-        #         if($FirewallRule.DestAddress.endswith("ip")){$FirewallRule.DestAddress= "{0} Adress" -f $($Interfaces | Where-Object { $_.Name -eq $FirewallRule.DestAddress.split("ip")[0]})}
-        #         else{$FirewallRule.DestAddress= "{0} Net" -f $($Interfaces | Where-Object { $_.Name -eq $FirewallRule.DestAddress})}
-        #         }
-        #     if($FirewallRule.log -eq " "){$FirewallRule.log = "Yes"}
-        # }
-
+        ConvertSourceDestinationAddress -SourceDestinationHasTable $FirewallRules -InputObject $InputObject
         return $FirewallRules
-        #return $FirewallSeperator
+        # $FirewallSeperator = $InputObject | Get-PFConfiguration | ConvertTo-PFObject -PFObjectType PFFirewallseparator
+        # return $FirewallSeperator
     }
 
 }
@@ -616,7 +601,7 @@ try{
 }
 
 # Get all config information so that we can see what's inside
-$PFServer = Get-PFConfiguration -Server $PFServer
+$PFServer = Get-PFConfiguration -Server $PFServer -Section  "" 
 if(-not $PFServer.XMLConfig -or $PFServer.XMLConfig.GetType() -ne [XML]){ 
     Write-Error "Unable to fetch the pfSense configuration."
     exit 1
@@ -624,10 +609,6 @@ if(-not $PFServer.XMLConfig -or $PFServer.XMLConfig.GetType() -ne [XML]){
 
 # We will have frequent reference to the [PFInterface] objects, to make them readily available
 $PFServer.Config.Interfaces = $PFServer | Get-PFInterface
-$PFServer.Config.Interfaces | Format-Table *
-$PFServer | Get-PFFirewallRule | Format-Table *
-
-exit
 
 # define the possible execution flows
 $Flow = @{
@@ -654,7 +635,7 @@ $Flow = @{
         "print" = "param(`$InputObject); `$InputObject | Get-PFnatRule | Format-table *"
     }    
     "Firewall" = @{
-        "print" = "param(`$InputObject); `$InputObject | Get-PFfirewallRule | Format-table * -AutoSize" 
+        "print" = "param(`$InputObject); `$InputObject | Get-PFfirewallRule | Format-table *" 
     } 
      
 
