@@ -196,7 +196,7 @@ function ConvertTo-PFObject {
                 #
                 #   can make it one logic too:
                 #   $PropertyValueXPath = '/value/string'
-                #   ForEach($PropertyLevel in ($XMLProperty -split "/")){
+                #   ForEach($PropertyLevel in ([array]::Reverse($XMLProperty -split "/"))){
                 #       $PropertyValueXPath = "//member[name='$($PropertyLevel)']$PropertyValueXPath"
                 #   }
                 #   $PropertyValue = (Select-Xml -XML $XMLObject -XPath $PropertyValueXPath).Node.InnerText
