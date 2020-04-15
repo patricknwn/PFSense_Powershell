@@ -181,6 +181,17 @@ function ConvertTo-PFObject {
                 #     </value>
                 # </member>
                 #
+                #   Possible code flow, written pretty verbose to make all steps explicit and to avoid magic numbers
+                #   $ParentIndex = 0
+                #   $ChildIndex = 1
+                #   $XMLProperty = "parent/child"
+                #   $XMLPropertySplit = $XMLProperty -split "/"
+                #   $XMLPropertyParent = $XMLPropertySplit[$ParentIndex]
+                #   $XMLPropertyChild = $XMLPropertySplit[$ChildIndex]
+                #
+                #   e.g. //member[name='$($XMLPropertyParent)']//member[name='$($XMLPropertyChild)']/value/string
+                #   or   //member[name='$($XMLPropertyParent)']/value/struct/member[name='$($XMLPropertyChild)']/value/string
+
                 # TODO: if possible, integrate this logic in the if-statement block below (if(-not $PropertyValue){...}) to make the changes as minimal as possible
 
                 # the special cases above didn't apply (or they didn't yield any value)
