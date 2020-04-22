@@ -1,0 +1,25 @@
+Alias:
+Array's not split
+
+dhcpd:
+RangeFrom and RangeTo are not filled
+
+dhcpStaticMap:
+
+Firewall:
+
+gateway:
+
+interface:
+
+
+StaticRoute:
+
+dnsResolver:
+
+dnsResolverHost:
+
+portfwd:
+
+
+
