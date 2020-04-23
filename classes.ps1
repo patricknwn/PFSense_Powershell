@@ -15,8 +15,7 @@ class PFAlias {
     [string[]]$Address
     [string]$Description
     [string[]]$Detail
-
-    static [string]$xpath = "/member/value/array/data/value"  
+ 
     static [string]$Section = "aliases/alias"
     # property name as it appears in the XML, insofar it's different from the object's property name
     static $PropertyMapping = @{
@@ -35,13 +34,12 @@ class PFdhcpd{
     [string]$DNSServer
     [string]$NTPServer    
 
-    static [string]$xpath = "/member/value" 
     static [string]$Section = "dhcpd"
     # property name as it appears in the XML, insofar it's different from the object's property name
     static $PropertyMapping = @{
         Interface = "name"
-        RangeFrom = "range"
-        RangeTo = "range"
+        RangeFrom = "range.from"
+        RangeTo = "range.to"
         netmask = "netmask"
         Domain = "Domain"
         Gateway = "Gateway"
@@ -51,7 +49,8 @@ class PFdhcpd{
 }
 
 class PFdhcpStaticMap{
-    [PFInterface[]]$Interface
+    [string[]]$interface
+#    [PFInterface[]]$Interface
     [string[]]$Hostname
     [string[]]$Domain
     [string[]]$CID
@@ -66,11 +65,16 @@ class PFdhcpStaticMap{
     static [string]$Section = "dhcpd"
     # property name as it appears in the XML, insofar it's different from the object's property name
     static $PropertyMapping = @{
-        Interface = "name"        
-        Description = "descr"
-        MACaddr = "mac"
+        Interface = "name"
+        Hostname = "Staticmap.Hostname"
+        Domain = "Staticmap.Domain"
+        CID = "Staticmap.CID"
+        IPaddr = "Staticmap.IPaddr"
+        Description  = "Staticmap.descr"
+        MACaddr  = "Staticmap.mac"
     }
 }
+
 class PFFirewallRule {
     [bool]$IsFloating = $false
     [bool]$IsQuick = $false
@@ -85,8 +89,8 @@ class PFFirewallRule {
     [ValidateSet('tcp', 'udp', 'tcp/udp', 'icmp', 'esp', 'ah', 'gre', 'ipv6', 
                  'igmp', 'pim', 'ospf', 'tp', 'carp', 'pfsync', '')]
         [string]$Protocol
-    [ValidateSet('network', 'address', 'any')]
-        [string]$SourceType
+#    [ValidateSet('network', 'address', 'any')]
+    [string]$SourceType
     [string]$SourceAddress
     [string]$SourcePort
     [string]$DestType
@@ -94,7 +98,6 @@ class PFFirewallRule {
     [string]$DestPort
     [string]$Description
 
-    static [string]$xpath = "/member/value/array/data/value"    
     static [string]$Section = "filter/rule"
     # property name as it appears in the XML, insofar it's different from the object's property name
     static $PropertyMapping = @{ 
@@ -103,12 +106,12 @@ class PFFirewallRule {
         IsDisabled = "disabled"
         IsLogged = "log"
         Description = "descr"
-        SourceType = "source/name"
-        SourceAddress= "source/network" #ToDo: find a way for multiple options because address needs to be here as well
-        SourcePort = "source/port"
-        DestType = "destination/name"
-        DestAddress= "destination/network"
-        DestPort = "destination/port"
+        SourceType = "source"
+        SourceAddress= "source"
+        SourcePort = "source"
+        DestType = "destination"
+        DestAddress= "destination"
+        DestPort = "destination"
     }
 }
 
@@ -254,10 +257,9 @@ class PFUnbound {
     [bool]$enable
     [int]$port
     [int]$sslport
-    
-    static [string]$xpath = "/member/value"
+
     static [string]$Section = "unbound"
-    static $PropertyMapping = @{ 
+    static $PropertyMapping = @{
         ActiveInterface = "active_interface"
         OutgoingInterface = "outgoing_interface"
     }
@@ -269,11 +271,12 @@ class PFUnboundHost {
     [string]$IPaddr
     [string]$aliases
 
-    static [string]$xpath = "/member/value"
     static [string]$Section = "unbound"
     static $PropertyMapping = @{ 
-        Hostname = "host"
-        IPaddr = "IP"
+        Hostname = "hosts.host"
+        Domain = "hosts.Domain"
+        IPaddr = "hosts.IP"
+        aliases = "hosts.Alias"
     }
 }
 

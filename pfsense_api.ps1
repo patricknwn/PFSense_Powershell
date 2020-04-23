@@ -6,7 +6,7 @@ This powershell script uses the xml-rpc feature of the pfsense to modify it.
 .DESCRIPTION
 This powershell script uses the xml-rpc feature of the pfsense to connect. It needs a the server addres, username and password to connect. 
 Afther the connection has been made it uses the service and action variable's to modify the pfsense. 
-NoTLS switch make's the script use a not secure connection 
+NoTLS switch make's the script use a not secure connection
 SkipCertificateCheck switch uses a secure connection, but does not check if the certificate is trusted 
 At this moment the following services are suported: 
     -interface       print, 
@@ -141,13 +141,39 @@ function ConvertTo-PFObject{
                     $Property = $_.Name
                     $XMLProperty = ($PropertyMapping.$Property) ? $PropertyMapping.$Property : $Property.ToLower()
                     $PropertyValue = $null
-                    if($XMLProperty -eq 'Name'){
-                        $PropertyValue = $key 
+                    $PropertyValue = $ObjectToParse.$key
+                    foreach($XMLProp in $XMLProperty.Split(".")){
+                        if($XMLProp -eq 'name'){
+                            $PropertyValue = $key
+                        }
+                        else{
+                            $PropertyValue = $PropertyValue.$XMLProp
+                        }
                     }
-                    else{
-                        $PropertyValue = $PFconfig.($Object::section).$key.$XMLProperty.string
-                    }
-                    $Properties.$Property = $PropertyValue
+                    if($PropertyValue.string){$Properties.$Property = $PropertyValue.string}
+                    elseif($key.GetType() = [string]){$Properties.$Property = $PropertyValue}
+                    else{$Properties.$Property = ""}
+                    $PropertyDefinition = ($Object | Get-Member -MemberType Properties | Where-Object { $_.Name -eq $Property }).Definition
+                    $PropertyType = ($PropertyDefinition.Split(" ") | Select-Object -First 1).Replace("[]", "")
+                    $PropertyIsCollection = $PropertyDefinition.Contains("[]")
+
+                    #if($PropertyIsCollection -and $PropertyValue){
+                    #    if($Property -eq "Detail"){$PropertyValue = $PropertyValue.string.Split("||")}
+                    #    elseif($Property -eq "Address"){$PropertyValue = $PropertyValue.string.Split(" ")}
+                    #    else{$PropertyValue = $PropertyValue.string.Split(",")}
+                    # 
+                    #    $PropertyTypedValue = New-Object System.Collections.ArrayList
+                    #    ForEach($Item in $PropertyValue){
+                    #            switch($PropertyType){
+                    #                "PFInterface" {
+                    #                    $PropertyTypedValue.Add(
+                    #                        ($InputObject.Config.Interfaces | Where-Object { $_.Name -eq $Item })
+                    #                    ) | Out-Null
+                    #                }
+                    #            }
+                    #    }
+                    #}
+                    
                 }
             $Object = New-Object -TypeName $PFObjectType -Property $Properties
             $Collection.Add($Object) | Out-Null
@@ -269,30 +295,69 @@ function Get-PFdhcpd {
     }
 }
 
-
-function Get-PFStaticRoute {
+function Get-PFdhcpStaticMap {
     [CmdletBinding()]
-    param ([Parameter(Mandatory=$true, ValueFromPipeline=$true)][Alias('Server')][psobject]$InputObject)
-    process { return $InputObject | Get-PFConfiguration | Convert-ToPFinterfaceObject -PFObjectType PFStaticRoute }
+    param ([Parameter(Mandatory=$true, ValueFromPipeline=$true)][Alias('Server')][PFServer]$InputObject)
+    process {
+        $InputObject = Get-PFConfiguration $InputObject
+        $PFdhcpStaticMap = ConvertTo-PFObject -PFconfig $PFconfig -PFObjectType "PFdhcpStaticMap"
+        return $PFdhcpStaticMap
+    }
+}
+
+
+function Get-PFFirewallRule {
+    [CmdletBinding()]
+    param ([Parameter(Mandatory=$true, ValueFromPipeline=$true)][Alias('Server')][PFServer]$InputObject)
+
+    process {
+        $InputObject = Get-PFConfiguration $InputObject
+        $FirewallRules = ConvertTo-PFObject -PFconfig $PFconfig -PFObjectType PFfirewallRule
+#        ConvertSourceDestinationAddress -SourceDestinationHasTable $FirewallRules -InputObject $InputObject
+        return $FirewallRules
+    }
 }
 
 function Get-PFGateway {
     [CmdletBinding()]
     param ([Parameter(Mandatory=$true, ValueFromPipeline=$true)][Alias('Server')][PFServer]$InputObject)
-    process { return $InputObject | Get-PFConfiguration | ConvertTo-PFObject -PFObjectType PFGateway }
+    process {
+        $InputObject = Get-PFConfiguration $InputObject
+        $GateWay = ConvertTo-PFObject -PFconfig $PFconfig -PFObjectType PFGateway
+        return $GateWay
+    }
 }
+function Get-PFNATRule {
+    [CmdletBinding()]
+    param ([Parameter(Mandatory=$true, ValueFromPipeline=$true)][Alias('Server')][PFServer]$InputObject)
+    process {
+        $InputObject = Get-PFConfiguration $InputObject
+        $NatRules = ConvertTo-PFObject -PFconfig $PFconfig -PFObjectType PFnatRule
+#        ConvertSourceDestinationAddress -SourceDestinationHasTable $NatRules -InputObject $InputObject
+        return $NatRules
+    }
 
-
-
+}
+function Get-PFStaticRoute {
+    [CmdletBinding()]
+    param ([Parameter(Mandatory=$true, ValueFromPipeline=$true)][Alias('Server')][psobject]$InputObject)
+    process {
+        $InputObject = Get-PFConfiguration $InputObject
+        $StaticRoute = ConvertTo-PFObject -PFconfig $PFconfig -PFObjectType PFStaticRoute
+        return $StaticRoute
+    }
+}
 
 function Get-PFUnbound {
     [CmdletBinding()]
     param ([Parameter(Mandatory=$true, ValueFromPipeline=$true)][Alias('Server')][psobject]$InputObject)
 
-    process {  
-        $Unbound = $InputObject | Get-PFConfiguration | ConvertTo-PFObject -PFObjectType PFunbound
+    process {
+        $InputObject = Get-PFConfiguration $InputObject
+        $Unbound = ConvertTo-PFObject -PFconfig $PFconfig -PFObjectType PFUnbound
         foreach($Rule in $Unbound){
             if($Rule.port -eq "0"){$Rule.port = "53"}
+            if($Rule.sslport -eq "0"){$Rule.sslport = "853"}
         } 
         return $Unbound  
     }
@@ -303,40 +368,12 @@ function Get-PFunboundHost {
     param ([Parameter(Mandatory=$true, ValueFromPipeline=$true)][Alias('Server')][psobject]$InputObject)
 
     process {  
-        $Unbound = $InputObject | Get-PFConfiguration | ConvertTo-PFObject -PFObjectType PFunboundHost
-        return $Unbound  
+        $InputObject = Get-PFConfiguration $InputObject
+        $UnboundHost = ConvertTo-PFObject -PFconfig $PFconfig -PFObjectType PFunboundHost
+        Return $UnboundHost
     }
 }
 
-function Get-PFNATRule {
-    [CmdletBinding()]
-    param ([Parameter(Mandatory=$true, ValueFromPipeline=$true)][Alias('Server')][PFServer]$InputObject)
-    process {
-        $NatRules = $InputObject | Get-PFConfiguration | ConvertTo-PFObject -PFObjectType PFnatRule
-        ConvertSourceDestinationAddress -SourceDestinationHasTable $NatRules -InputObject $InputObject
-        return $NatRules
-    }
-
-}
-
-function Get-PFFirewallRule {
-    [CmdletBinding()]
-    param ([Parameter(Mandatory=$true, ValueFromPipeline=$true)][Alias('Server')][PFServer]$InputObject)
-
-    process {
-        $FirewallRules = $InputObject | Get-PFConfiguration | ConvertTo-PFObject -PFObjectType PFfirewallRule
-        ConvertSourceDestinationAddress -SourceDestinationHasTable $FirewallRules -InputObject $InputObject
-        return $FirewallRules
-        # $FirewallSeperator = $InputObject | Get-PFConfiguration | ConvertTo-PFObject -PFObjectType PFFirewallseparator
-        # return $FirewallSeperator
-    }
-}
-
-function Get-PFdhcpStaticMap {
-    [CmdletBinding()]
-    param ([Parameter(Mandatory=$true, ValueFromPipeline=$true)][Alias('Server')][PFServer]$InputObject)
-    process { return $InputObject | Get-PFConfiguration | ConvertTo-PFObject -PFObjectType PFdhcpStaticMap }
-}
 function Invoke-PFXMLRPCRequest {
     <#
     .DESCRIPTION
