@@ -79,7 +79,7 @@ else {
 function ConvertTo-PFObject{
     [CmdletBinding()]
     param (
-        [Parameter(Mandatory=$false)]$PFconfig,
+        [Parameter(Mandatory=$true)]$PFconfig,
         [Parameter(Mandatory=$false)]$PFObjectType
     )
     begin{
@@ -99,15 +99,14 @@ function ConvertTo-PFObject{
         
         $PropertyValue = $null
         $index = 0
-
         if ($ObjectToParse[$Index]){
+            write-host "IF"
             while($ObjectToParse[$index]){
                 $Object | Get-Member -MemberType properties | Select-Object -Property Name | ForEach-Object {
                     $Property = $_.Name
                     $XMLProperty = ($PropertyMapping.$Property) ? $PropertyMapping.$Property : $Property.ToLower()
                     $PropertyValue = $ObjectToParse[$index].$XMLProperty.string
-                    $Properties.$Property = $PropertyValue
-
+                    
                     $PropertyDefinition = ($Object | Get-Member -MemberType Properties | Where-Object { $_.Name -eq $Property }).Definition
                     $PropertyType = ($PropertyDefinition.Split(" ") | Select-Object -First 1).Replace("[]", "")
                     $PropertyIsCollection = $PropertyDefinition.Contains("[]")
@@ -128,7 +127,7 @@ function ConvertTo-PFObject{
                             }
                         }
                     }
-
+                    $Properties.$Property = $PropertyValue
                 }
                 $Object = New-Object -TypeName $PFObjectType -Property $Properties
                 $Collection.Add($Object) | Out-Null
@@ -136,6 +135,7 @@ function ConvertTo-PFObject{
             }
         }
         else{
+            write-host "Else"
             foreach($key in $PFconfig.($Object::section).keys){
                 $Object | Get-Member -MemberType properties | Select-Object -Property Name | ForEach-Object {
                     $Property = $_.Name
@@ -150,29 +150,28 @@ function ConvertTo-PFObject{
                             $PropertyValue = $PropertyValue.$XMLProp
                         }
                     }
-                    if($PropertyValue.string){$Properties.$Property = $PropertyValue.string}
+                    if($PropertyValue.string){$PropertyValue = $PropertyValue.string}
                     elseif($key.GetType() = [string]){$Properties.$Property = $PropertyValue}
                     else{$Properties.$Property = ""}
                     $PropertyDefinition = ($Object | Get-Member -MemberType Properties | Where-Object { $_.Name -eq $Property }).Definition
                     $PropertyType = ($PropertyDefinition.Split(" ") | Select-Object -First 1).Replace("[]", "")
                     $PropertyIsCollection = $PropertyDefinition.Contains("[]")
-
-                    #if($PropertyIsCollection -and $PropertyValue){
-                    #    if($Property -eq "Detail"){$PropertyValue = $PropertyValue.string.Split("||")}
-                    #    elseif($Property -eq "Address"){$PropertyValue = $PropertyValue.string.Split(" ")}
-                    #    else{$PropertyValue = $PropertyValue.string.Split(",")}
-                    # 
-                    #    $PropertyTypedValue = New-Object System.Collections.ArrayList
-                    #    ForEach($Item in $PropertyValue){
-                    #            switch($PropertyType){
-                    #                "PFInterface" {
-                    #                    $PropertyTypedValue.Add(
-                    #                        ($InputObject.Config.Interfaces | Where-Object { $_.Name -eq $Item })
-                    #                    ) | Out-Null
-                    #                }
-                    #            }
-                    #    }
-                    #}
+                    
+                    if($PropertyIsCollection -and $PropertyValue){
+                        if($Property -eq "Detail"){$PropertyValue = $PropertyValue.Split("||")}
+                        elseif($Property -eq "Address"){$PropertyValue = $PropertyValue.Split(" ")}
+                        else{$PropertyValue = $PropertyValue.Split(",")}
+                    } 
+                    $PropertyTypedValue = New-Object System.Collections.ArrayList
+                    ForEach($Item in $PropertyValue){
+                        switch($PropertyType){
+                            "PFInterface" {
+                                $PropertyTypedValue.Add(($InputObject.Config.Interfaces | Where-Object { $_.Name -eq $Item })) | Out-Null
+                            
+                            } 
+                        }
+                    }
+                    $Properties.$Property = $PropertyValue
                     
                 }
             $Object = New-Object -TypeName $PFObjectType -Property $Properties
@@ -271,7 +270,7 @@ function Get-PFInterface {
     param ([Parameter(Mandatory=$true, ValueFromPipeline=$true)][Alias('Server')][PFServer]$InputObject)   
     process { 
         $InputObject = Get-PFConfiguration $InputObject
-        $PFinterfaces = ConvertTo-PFObject -PFconfig $PFconfig -PFObjectType "PFInterface"
+        $PFinterfaces = ConvertTo-PFObject -PFconfig $InputObject.PFconfig -PFObjectType "PFInterface"
         return $PFinterfaces 
     }
         
@@ -281,7 +280,7 @@ function Get-PFAlias {
     param ([Parameter(Mandatory=$true, ValueFromPipeline=$true)][Alias('Server')][PFServer]$InputObject)
     process {
         $InputObject = Get-PFConfiguration $InputObject
-        $Aliases = ConvertTo-PFObject -PFconfig $PFconfig -PFObjectType "PFAlias"
+        $Aliases = ConvertTo-PFObject -PFconfig $InputObject.PFconfig -PFObjectType "PFAlias"
         return $Aliases
     }
 }
@@ -290,7 +289,7 @@ function Get-PFdhcpd {
     param ([Parameter(Mandatory=$true, ValueFromPipeline=$true)][Alias('Server')][PFServer]$InputObject)
     process {
         $InputObject = Get-PFConfiguration $InputObject
-        $dhcpd = ConvertTo-PFObject -PFconfig $PFconfig -PFObjectType "PFdhcpd"
+        $dhcpd = ConvertTo-PFObject -PFconfig $InputObject.PFconfig -PFObjectType "PFdhcpd"
         return $dhcpd
     }
 }
@@ -300,7 +299,7 @@ function Get-PFdhcpStaticMap {
     param ([Parameter(Mandatory=$true, ValueFromPipeline=$true)][Alias('Server')][PFServer]$InputObject)
     process {
         $InputObject = Get-PFConfiguration $InputObject
-        $PFdhcpStaticMap = ConvertTo-PFObject -PFconfig $PFconfig -PFObjectType "PFdhcpStaticMap"
+        $PFdhcpStaticMap = ConvertTo-PFObject -PFconfig $InputObject.PFconfig -PFObjectType "PFdhcpStaticMap"
         return $PFdhcpStaticMap
     }
 }
@@ -312,7 +311,7 @@ function Get-PFFirewallRule {
 
     process {
         $InputObject = Get-PFConfiguration $InputObject
-        $FirewallRules = ConvertTo-PFObject -PFconfig $PFconfig -PFObjectType PFfirewallRule
+        $FirewallRules = ConvertTo-PFObject -PFconfig $InputObject.PFconfig -PFObjectType PFfirewallRule
 #        ConvertSourceDestinationAddress -SourceDestinationHasTable $FirewallRules -InputObject $InputObject
         return $FirewallRules
     }
@@ -323,7 +322,7 @@ function Get-PFGateway {
     param ([Parameter(Mandatory=$true, ValueFromPipeline=$true)][Alias('Server')][PFServer]$InputObject)
     process {
         $InputObject = Get-PFConfiguration $InputObject
-        $GateWay = ConvertTo-PFObject -PFconfig $PFconfig -PFObjectType PFGateway
+        $GateWay = ConvertTo-PFObject -PFconfig $InputObject.PFconfig -PFObjectType PFGateway
         return $GateWay
     }
 }
@@ -332,7 +331,7 @@ function Get-PFNATRule {
     param ([Parameter(Mandatory=$true, ValueFromPipeline=$true)][Alias('Server')][PFServer]$InputObject)
     process {
         $InputObject = Get-PFConfiguration $InputObject
-        $NatRules = ConvertTo-PFObject -PFconfig $PFconfig -PFObjectType PFnatRule
+        $NatRules = ConvertTo-PFObject -PFconfig $InputObject.PFconfig -PFObjectType PFnatRule
 #        ConvertSourceDestinationAddress -SourceDestinationHasTable $NatRules -InputObject $InputObject
         return $NatRules
     }
@@ -343,7 +342,7 @@ function Get-PFStaticRoute {
     param ([Parameter(Mandatory=$true, ValueFromPipeline=$true)][Alias('Server')][psobject]$InputObject)
     process {
         $InputObject = Get-PFConfiguration $InputObject
-        $StaticRoute = ConvertTo-PFObject -PFconfig $PFconfig -PFObjectType PFStaticRoute
+        $StaticRoute = ConvertTo-PFObject -PFconfig $InputObject.PFconfig -PFObjectType PFStaticRoute
         return $StaticRoute
     }
 }
@@ -354,7 +353,7 @@ function Get-PFUnbound {
 
     process {
         $InputObject = Get-PFConfiguration $InputObject
-        $Unbound = ConvertTo-PFObject -PFconfig $PFconfig -PFObjectType PFUnbound
+        $Unbound = ConvertTo-PFObject -PFconfig $InputObject.PFconfig -PFObjectType PFUnbound
         foreach($Rule in $Unbound){
             if($Rule.port -eq "0"){$Rule.port = "53"}
             if($Rule.sslport -eq "0"){$Rule.sslport = "853"}
@@ -369,7 +368,7 @@ function Get-PFunboundHost {
 
     process {  
         $InputObject = Get-PFConfiguration $InputObject
-        $UnboundHost = ConvertTo-PFObject -PFconfig $PFconfig -PFObjectType PFunboundHost
+        $UnboundHost = ConvertTo-PFObject -PFconfig $InputObject.PFconfig -PFObjectType PFunboundHost
         Return $UnboundHost
     }
 }
