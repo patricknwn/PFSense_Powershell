@@ -89,12 +89,13 @@ class PFFirewallRule {
                  'igmp', 'pim', 'ospf', 'tp', 'carp', 'pfsync', '')]
         [string]$Protocol
 #    [ValidateSet('network', 'address', 'any')]
-    [string]$SourceType
-    [string]$SourceAddress
-    [string]$SourcePort
-    [string]$DestType
-    [string]$DestAddress
-    [string]$DestPort
+    [hashtable]$SourceType
+    [string]$SourceType_
+    [hashtable]$SourceAddress
+    [hashtable]$SourcePort
+    [hashtable]$DestType
+    [hashtable]$DestAddress
+    [hashtable]$DestPort
     [string]$Description
 
     static [string]$Section = "filter/rule"
