@@ -113,19 +113,20 @@ function ConvertTo-PFObject{
                         $PropertyValue = $PropertyValue.InnerText
                     }
                     
-                    if($PropertyValue.string){$PropertyValue = $PropertyValue.string}
+                    # if($PropertyValue.string){$PropertyValue = $PropertyValue.string}
                     
                     $PropertyDefinition = ($Object | Get-Member -MemberType Properties | Where-Object { $_.Name -eq $Property }).Definition
                     $PropertyType = ($PropertyDefinition.Split(" ") | Select-Object -First 1).Replace("[]", "")
                     $PropertyIsCollection = $PropertyDefinition.Contains("[]")
 
+                    # TODO: make the typed conversion work with non-collections too :)
                     if($PropertyIsCollection -and $PropertyValue){
                         if($Property -eq "Detail"){$PropertyValue = $PropertyValue.Split("||")}
                         elseif($Property -eq "Address"){$PropertyValue = $PropertyValue.Split(" ")}
                         else{$PropertyValue = $PropertyValue.Split(",")}
                     
-                    $PropertyTypedValue = New-Object System.Collections.ArrayList
-                    ForEach($Item in $PropertyValue){
+                        $PropertyTypedValue = New-Object System.Collections.ArrayList
+                        ForEach($Item in $PropertyValue){
                             switch($PropertyType){
                                 "PFInterface" {
                                     $PropertyTypedValue.Add(
@@ -617,8 +618,20 @@ $PFServer | Get-PFDHCPStaticMap | Format-table *
 
 Write-Host "All firewall rules" -NoNewline -BackgroundColor Gray -ForegroundColor DarkGray
 # TODO: if you want to convert System.Collections.Hashtable into something more meaningful (display only), do it here
+#       obviously creating a Write-PFFirewallRule function would be an even better idea :)
 #       DO NOT change it in the ConvertTo-PFObject function, since that will really complicate the reverse operation (changing and uploading the rule)
-$PFServer | Get-PFFirewallRule | Format-table *
+$FWRules = $PFServer | Get-PFFirewallRule
+foreach($FWRule in $FWRules){
+    if($FWRule.SourceType.Count -eq 1){
+        switch($FWRule.SourceType.Keys[0]){
+            "any"       { $FWRule.SourceType_ = "any" }
+            "network"   { $FWRule.SourceType_ = ("{0} network" -f $FWRule.SourceType.Values[0].InnerText) }
+            "address"   { $FWRule.SourceType_ = $FWRule.SourceType.Values[0].InnerText }
+        }
+    }
+    
+}
+$FWRules | Select-Object -ExcludeProperty SourceType, SourceAddress, SourcePort, DestType, DestAddress, DestPort | Format-table *
 
 Write-Host "Registered gateways" -NoNewline -BackgroundColor Gray -ForegroundColor DarkGray
 $PFServer | Get-PFGateway | Format-table *
