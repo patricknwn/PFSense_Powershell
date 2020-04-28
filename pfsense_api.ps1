@@ -98,7 +98,7 @@ function ConvertTo-PFObject{
         $index = 0 
         # This IF statement is to see if the $ObjectToParse is a array of object (this happens with the interface), if it is a array, we need to loop to each item to get it's value's
         if ($ObjectToParse[$Index]){
- #           write-host "IF"
+            write-host "IF"
             while($ObjectToParse[$index]){
                 $Object | Get-Member -MemberType properties | Select-Object -Property Name | ForEach-Object {
                     $Property = $_.Name
@@ -107,7 +107,7 @@ function ConvertTo-PFObject{
                     foreach($XMLProp in $XMLProperty.Split("/")){                    
                         $PropertyValue = $PropertyValue.$XMLProp
                     }
-                    $PropertyValue = $PropertyValue.string
+                    if($PropertyValue.string){$PropertyValue = $PropertyValue.string}
                     
                     $PropertyDefinition = ($Object | Get-Member -MemberType Properties | Where-Object { $_.Name -eq $Property }).Definition
                     $PropertyType = ($PropertyDefinition.Split(" ") | Select-Object -First 1).Replace("[]", "")
@@ -138,7 +138,7 @@ function ConvertTo-PFObject{
         }
         # If $ObjectToParse isn't a array we use a slightily different way to get it's value's
         else{
-#            write-host "Else"
+            write-host "Else"
             foreach($key in $PFconfig.($Object::section).keys){
                 $Object | Get-Member -MemberType properties | Select-Object -Property Name | ForEach-Object {
                     $Property = $_.Name
@@ -175,6 +175,10 @@ function ConvertTo-PFObject{
                                 ) | Out-Null
                             }  
                         }
+                    }
+                    if($PropertyValue){"Property = {2}, PropertyValue = {0}, Type = {1}" -f $PropertyValue,$PropertyValue.GetType(),$Property}
+                    if($PropertyValue){
+                        if($PropertyValue -as [XML]){write-host "System.Xml.XmlElement"}
                     }
                     $Properties.$Property = $PropertyValue
                     

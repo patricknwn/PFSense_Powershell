@@ -37,11 +37,6 @@ dnsResolverHost:
 Works
 
 portfwd:
-- SourceType
-- SourceAddress
-- SourcePort
-- DestType
-- DestAddress
-- DestPort
+SourceAddress only works for network we need a way to try address any our network
 
 

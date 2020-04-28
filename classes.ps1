@@ -202,10 +202,10 @@ class PFNATRule {
     static $PropertyMapping = @{ 
         LocalPort = "local-port"
         Description = "descr"
-        SourceType = "source/name"
+        SourceType = "source/keys"
         SourceAddress= "source/network" #ToDo: find a way for multiple options because address needs to be here as well
         SourcePort = "source/port"
-        DestType = "destination/name"
+        DestType = "destination/keys"
         DestAddress= "destination/network"
         DestPort = "destination/port"
         
