@@ -24,7 +24,7 @@ class PFAlias {
 }
 
 class PFdhcpd{
-    [string[]]$interface
+    [string]$interface
 #    [PFinterface]$interface
     [string]$RangeFrom
     [string]$RangeTo
@@ -38,8 +38,8 @@ class PFdhcpd{
     # property name as it appears in the XML, insofar it's different from the object's property name
     static $PropertyMapping = @{
         Interface = "name"
-        RangeFrom = "range.from"
-        RangeTo = "range.to"
+        RangeFrom = "range/from"
+        RangeTo = "range/to"
         netmask = "netmask"
         Domain = "Domain"
         Gateway = "Gateway"
@@ -61,17 +61,16 @@ class PFdhcpStaticMap{
     [string[]]$DNSserver
     [string[]]$NTPServer
 
-    static [string]$xpath = "/member/value" 
     static [string]$Section = "dhcpd"
     # property name as it appears in the XML, insofar it's different from the object's property name
     static $PropertyMapping = @{
         Interface = "name"
-        Hostname = "Staticmap.Hostname"
-        Domain = "Staticmap.Domain"
-        CID = "Staticmap.CID"
-        IPaddr = "Staticmap.IPaddr"
-        Description  = "Staticmap.descr"
-        MACaddr  = "Staticmap.mac"
+        Hostname = "Staticmap/Hostname"
+        Domain = "Staticmap/Domain"
+        CID = "Staticmap/CID"
+        IPaddr = "Staticmap/IPaddr"
+        Description  = "Staticmap/descr"
+        MACaddr  = "Staticmap/mac"
     }
 }
 
@@ -121,7 +120,6 @@ class PFFirewallSeparator {
     [string]$color
     [PFInterface[]]$interface
 
-    static [string]$xpath = "/member/value/array/data/value"
     static [string]$Section = "filter/separator"
     # property name as it appears in the XML, insofar it's different from the object's property name
     static $PropertyMapping = @{ 
@@ -139,7 +137,6 @@ class PFGateway {
     [string]$IPProtocol
     [string]$Description
 
-    static [string]$xpath = "/member/value/array/data/value"
     static [string]$Section = "gateways/gateway_item"
     # property name as it appears in the XML, insofar it's different from the object's property name
     static $PropertyMapping = @{
@@ -165,8 +162,6 @@ class PFInterface {
     [string]$DHCPv6DUID
     [string]$DHCPv6IAPDLEN
 
-    #ToDo: find xpath for interface
-    static [string]$xpath = "/member/value/array/data/value" # This one must be changed
     static [string]$Section = "interfaces"
     # property name as it appears in the XML, insofar it's different from the object's property name
     static $PropertyMapping = @{
@@ -202,7 +197,6 @@ class PFNATRule {
     [string]$interface
     [string]$Description
 
-    static [string]$xpath = "/member/value/array/data/value"
     static [string]$Section = "nat/rule"
     # property name as it appears in the XML, insofar it's different from the object's property name
     static $PropertyMapping = @{ 
@@ -241,7 +235,6 @@ class PFStaticRoute {
     [string]$Description
     
     static [string]$Section = "staticroutes/route"
-    static [string]$xpath = "/member/value/array/data/value"
     # property name as it appears in the XML, insofar it's different from the object's property name
     static $PropertyMapping = @{ 
         Description = "descr"
@@ -269,14 +262,18 @@ class PFUnboundHost {
     [string]$Hostname
     [string]$Domain
     [string]$IPaddr
-    [string]$aliases
+    [string[]]$AliasesHost
+    [string[]]$AliasesDomain
+    [string[]]$AliasesDescription
 
-    static [string]$Section = "unbound"
+    static [string]$Section = "unbound/hosts"
     static $PropertyMapping = @{ 
-        Hostname = "hosts.host"
-        Domain = "hosts.Domain"
-        IPaddr = "hosts.IP"
-        aliases = "hosts.Alias"
+        Hostname = "host"
+        Domain = "Domain"
+        IPaddr = "IP"
+        aliasesHost = "aliases/item/host"
+        AliasesDomain = "aliases/item/domain"
+        AliasesDescription = "aliases/item/Description"
     }
 }
 

@@ -1,6 +1,5 @@
 All:
 - Interface name convertion
-- array's not split
 - Empty fields are printed as "system.Xml.XmlElement"
 
 Alias:
@@ -35,7 +34,7 @@ dnsResolver:
 - outgoing Interface
 
 dnsResolverHost:
-- keeps blank
+Works
 
 portfwd:
 - SourceType

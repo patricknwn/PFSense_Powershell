@@ -69,7 +69,7 @@ Param
 # Test to see if the xmlrpc is installed, if not install
 if (Get-Module -ListAvailable -Name XmlRpc) {
     Write-Host "Module exists"
-} 
+}  
 else {
     Install-Module -Name XmlRpc
 }
@@ -88,24 +88,26 @@ function ConvertTo-PFObject{
         $Collection = New-Object System.Collections.ArrayList
 
         $Properties = @{}
-    }
+    } 
     process { 
-        if(($Object::section) -match "/"){
-            $ObjectToParse = $PFconfig.(($Object::section).Split("/")[0]).(($Object::section).Split("/")[1])
-        }
-        else{
-            $ObjectToParse = $PFconfig.($Object::section)
-        }
-        
+        $ObjectToParse = $PFconfig
+        foreach($XMLPFObj in ($Object::section).Split("/")){
+            $ObjectToParse = $ObjectToParse.$XMLPFObj
+        } 
         $PropertyValue = $null
-        $index = 0
+        $index = 0 
+        # This IF statement is to see if the $ObjectToParse is a array of object (this happens with the interface), if it is a array, we need to loop to each item to get it's value's
         if ($ObjectToParse[$Index]){
-            write-host "IF"
+ #           write-host "IF"
             while($ObjectToParse[$index]){
                 $Object | Get-Member -MemberType properties | Select-Object -Property Name | ForEach-Object {
                     $Property = $_.Name
                     $XMLProperty = ($PropertyMapping.$Property) ? $PropertyMapping.$Property : $Property.ToLower()
-                    $PropertyValue = $ObjectToParse[$index].$XMLProperty.string
+                    $PropertyValue = $ObjectToParse[$index]
+                    foreach($XMLProp in $XMLProperty.Split("/")){                    
+                        $PropertyValue = $PropertyValue.$XMLProp
+                    }
+                    $PropertyValue = $PropertyValue.string
                     
                     $PropertyDefinition = ($Object | Get-Member -MemberType Properties | Where-Object { $_.Name -eq $Property }).Definition
                     $PropertyType = ($PropertyDefinition.Split(" ") | Select-Object -First 1).Replace("[]", "")
@@ -121,7 +123,7 @@ function ConvertTo-PFObject{
                             switch($PropertyType){
                                 "PFInterface" {
                                     $PropertyTypedValue.Add(
-                                        ($InputObject.Config.Interfaces | Where-Object { $_.Name -eq $Item })
+                                        ($PFconfig.Interfaces | Where-Object { $_.Name -eq $Item })
                                     ) | Out-Null
                                 }
                             }
@@ -134,15 +136,16 @@ function ConvertTo-PFObject{
                 $index++
             }
         }
+        # If $ObjectToParse isn't a array we use a slightily different way to get it's value's
         else{
-            write-host "Else"
+#            write-host "Else"
             foreach($key in $PFconfig.($Object::section).keys){
                 $Object | Get-Member -MemberType properties | Select-Object -Property Name | ForEach-Object {
                     $Property = $_.Name
                     $XMLProperty = ($PropertyMapping.$Property) ? $PropertyMapping.$Property : $Property.ToLower()
                     $PropertyValue = $null
                     $PropertyValue = $ObjectToParse.$key
-                    foreach($XMLProp in $XMLProperty.Split(".")){
+                    foreach($XMLProp in $XMLProperty.Split("/")){
                         if($XMLProp -eq 'name'){
                             $PropertyValue = $key
                         }
@@ -153,6 +156,7 @@ function ConvertTo-PFObject{
                     if($PropertyValue.string){$PropertyValue = $PropertyValue.string}
                     elseif($key.GetType() = [string]){$Properties.$Property = $PropertyValue}
                     else{$Properties.$Property = ""}
+
                     $PropertyDefinition = ($Object | Get-Member -MemberType Properties | Where-Object { $_.Name -eq $Property }).Definition
                     $PropertyType = ($PropertyDefinition.Split(" ") | Select-Object -First 1).Replace("[]", "")
                     $PropertyIsCollection = $PropertyDefinition.Contains("[]")
@@ -166,9 +170,10 @@ function ConvertTo-PFObject{
                     ForEach($Item in $PropertyValue){
                         switch($PropertyType){
                             "PFInterface" {
-                                $PropertyTypedValue.Add(($InputObject.Config.Interfaces | Where-Object { $_.Name -eq $Item })) | Out-Null
-                            
-                            } 
+                                $PropertyTypedValue.Add(
+                                    ($PFconfig.Interfaces.keys | Where-Object { $_ -eq $Item }) 
+                                ) | Out-Null
+                            }  
                         }
                     }
                     $Properties.$Property = $PropertyValue
