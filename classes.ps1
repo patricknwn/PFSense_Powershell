@@ -49,17 +49,17 @@ class PFdhcpd{
 }
 
 class PFdhcpStaticMap{
-    [string[]]$interface
+    [string]$interface
 #    [PFInterface[]]$Interface
-    [string[]]$Hostname
-    [string[]]$Domain
-    [string[]]$CID
-    [string[]]$MACaddr
-    [string[]]$IPaddr
-    [string[]]$Description
-    [string[]]$Gateway
-    [string[]]$DNSserver
-    [string[]]$NTPServer
+    [string]$Hostname
+    [string]$Domain
+    [string]$ClientID
+    [string]$MACaddr
+    [string]$IPaddr
+    [string]$Description
+    [string]$Gateway
+    [string]$DNSserver
+    [string]$NTPServer
 
     static [string]$Section = "dhcpd"
     # property name as it appears in the XML, insofar it's different from the object's property name
@@ -67,7 +67,7 @@ class PFdhcpStaticMap{
         Interface = "name"
         Hostname = "Staticmap/Hostname"
         Domain = "Staticmap/Domain"
-        CID = "Staticmap/CID"
+        ClientID = "Staticmap/CID"
         IPaddr = "Staticmap/IPaddr"
         Description  = "Staticmap/descr"
         MACaddr  = "Staticmap/mac"

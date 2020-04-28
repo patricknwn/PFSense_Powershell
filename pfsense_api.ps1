@@ -67,6 +67,7 @@ Param
     )
 
 # Test to see if the xmlrpc is installed, if not install
+# TODO: make this a bit nicer, with error handling and stuff
 if (Get-Module -ListAvailable -Name XmlRpc) {
     Write-Host "Module exists"
 }  
@@ -107,6 +108,11 @@ function ConvertTo-PFObject{
                     foreach($XMLProp in $XMLProperty.Split("/")){                    
                         $PropertyValue = $PropertyValue.$XMLProp
                     }
+                                        
+                    If($PropertyValue -and ($PropertyValue.GetType() -eq [System.Xml.XmlElement])){
+                        $PropertyValue = $PropertyValue.InnerText
+                    }
+                    
                     if($PropertyValue.string){$PropertyValue = $PropertyValue.string}
                     
                     $PropertyDefinition = ($Object | Get-Member -MemberType Properties | Where-Object { $_.Name -eq $Property }).Definition
@@ -153,9 +159,10 @@ function ConvertTo-PFObject{
                             $PropertyValue = $PropertyValue.$XMLProp
                         }
                     }
-                    if($PropertyValue.string){$PropertyValue = $PropertyValue.string}
-                    elseif($key.GetType() = [string]){$Properties.$Property = $PropertyValue}
-                    else{$Properties.$Property = ""}
+                    
+                    If($PropertyValue -and ($PropertyValue.GetType() -eq [System.Xml.XmlElement])){
+                        $PropertyValue = $PropertyValue.InnerText
+                    }
 
                     $PropertyDefinition = ($Object | Get-Member -MemberType Properties | Where-Object { $_.Name -eq $Property }).Definition
                     $PropertyType = ($PropertyDefinition.Split(" ") | Select-Object -First 1).Replace("[]", "")
@@ -176,9 +183,9 @@ function ConvertTo-PFObject{
                             }  
                         }
                     }
-                    if($PropertyValue){"Property = {2}, PropertyValue = {0}, Type = {1}" -f $PropertyValue,$PropertyValue.GetType(),$Property}
-                    if($PropertyValue){
-                        if($PropertyValue -as [XML]){write-host "System.Xml.XmlElement"}
+                    
+                    If($PropertyValue -and ($PropertyValue.GetType() -eq [System.Xml.XmlElement])){
+                        $PropertyValue = $PropertyValue.InnerText
                     }
                     $Properties.$Property = $PropertyValue
                     
@@ -216,27 +223,6 @@ function Format-Xml {
             $StringWriter.Flush();
             return $StringWriter.ToString();
         }
-}
-
-function ConvertSourceDestinationAddress{
-    [CmdletBinding()]
-    param ([Parameter(Mandatory=$true, ValueFromPipeline=$true)][Alias('Rules')][psobject]$SourceDestinationHasTable,
-           [Parameter(Mandatory=$true, ValueFromPipeline=$true)][Alias('Server')][PFServer]$InputObject)
-    process {
-        # I have kept the name conversion for the source and destination address out of the ConvertTo-PFObject because this is only used for two services
-        ForEach($Item in $SourceDestinationHasTable){
-            if($Item.SourceType -eq "network"){
-                if($Item.SourceAddress.endswith("ip")){
-                    $Item.SourceAddress= "{0} Adress" -f $($InputObject.Config.Interfaces | Where-Object { $_.Name -eq $Item.SourceAddress.split("ip")[0]})}
-                else{$Item.SourceAddress= "{0} Net" -f $($InputObject.Config.Interfaces | Where-Object { $_.Name -eq $Item.SourceAddress})}
-                }
-            if($Item.DestType -eq "network"){
-                if($Item.DestAddress.endswith("ip")){$Item.DestAddress= "{0} Adress" -f $($InputObject.Config.Interfaces | Where-Object { $_.Name -eq $Item.DestAddress.split("ip")[0]})}
-                else{$Item.DestAddress= "{0} Net" -f $($InputObject.Config.Interfaces | Where-Object { $_.Name -eq $Item.DestAddress})}
-                }
-        
-        }
-    }
 }
 
 function Get-PFConfiguration {
@@ -321,7 +307,6 @@ function Get-PFFirewallRule {
     process {
         $InputObject = Get-PFConfiguration $InputObject
         $FirewallRules = ConvertTo-PFObject -PFconfig $InputObject.PFconfig -PFObjectType PFfirewallRule
-#        ConvertSourceDestinationAddress -SourceDestinationHasTable $FirewallRules -InputObject $InputObject
         return $FirewallRules
     }
 }
@@ -616,6 +601,45 @@ $StaticInterface.keys | %{
     $Object = New-Object -TypeName PFInterface -Property $Properties
     $PFServer.Config.Interfaces = $PFServer.Config.Interfaces + $Object 
 }
+
+# test objects
+# make a clear visual distinction between this run and the previous run
+1..30 | ForEach-Object { Write-Host "" }
+
+Write-Host "Registered aliases:" -NoNewline -BackgroundColor Gray -ForegroundColor DarkGray
+$PFServer | Get-PFAlias | Format-table *
+
+Write-Host "Registered DHCPd servers" -NoNewline -BackgroundColor Gray -ForegroundColor DarkGray
+$PFServer | Get-PFDHCPd | Format-table *
+
+Write-Host "Registered static DHCP leases" -NoNewline -BackgroundColor Gray -ForegroundColor DarkGray
+$PFServer | Get-PFDHCPStaticMap | Format-table *
+
+Write-Host "All firewall rules" -NoNewline -BackgroundColor Gray -ForegroundColor DarkGray
+# TODO: if you want to convert System.Collections.Hashtable into something more meaningful (display only), do it here
+#       DO NOT change it in the ConvertTo-PFObject function, since that will really complicate the reverse operation (changing and uploading the rule)
+$PFServer | Get-PFFirewallRule | Format-table *
+
+Write-Host "Registered gateways" -NoNewline -BackgroundColor Gray -ForegroundColor DarkGray
+$PFServer | Get-PFGateway | Format-table *
+
+Write-Host "Available interfaces" -NoNewline -BackgroundColor Gray -ForegroundColor DarkGray
+$PFServer | Get-PFInterface | Format-table *
+
+Write-Host "All NAT rules" -NoNewline -BackgroundColor Gray -ForegroundColor DarkGray
+$PFServer | Get-PFNATRule | Format-table *
+
+Write-Host "All static routes" -NoNewline -BackgroundColor Gray -ForegroundColor DarkGray
+$PFServer | Get-PFStaticRoute | Format-table *
+
+Write-Host "DNS server settings" -NoNewline -BackgroundColor Gray -ForegroundColor DarkGray
+$PFServer | Get-PFUnbound | Format-table *
+
+Write-Host "DNS host overrides" -NoNewline -BackgroundColor Gray -ForegroundColor DarkGray
+$PFServer | Get-PFUnboundHost | Format-table *
+
+Write-Host "THE END" -BackgroundColor Gray -ForegroundColor DarkGray
+exit;
 
 # define the possible execution flows
 $Flow = @{
