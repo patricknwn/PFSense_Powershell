@@ -307,8 +307,26 @@ function Get-PFFirewallRule {
 
     process {
         $InputObject = Get-PFConfiguration $InputObject
-        $FirewallRules = ConvertTo-PFObject -PFconfig $InputObject.PFconfig -PFObjectType PFfirewallRule
-        return $FirewallRules
+        $FWRules = ConvertTo-PFObject -PFconfig $InputObject.PFconfig -PFObjectType PFfirewallRule
+        
+        # TODO: Create some <Property>_ fields with a nice string representation
+        #       this here is just quick and dirty example that omits a lot of the steps.
+        #       original values stay in Source and Destination, which will be used for changing/uploading new items
+        foreach($FWRule in $FWRules){
+            $FWRule.SourcePort = ($FWRule.Source.Port) ? $FWRule.Source.Port.InnerText : "any"
+
+            if($FWRule.Source.Contains("any")){
+                $FWRule.SourceAddress = "any"
+
+            } elseif($FWRule.Source.Contains("address")) {
+                $FWRule.SourceAddress = $FWRule.Source.address.InnerText
+
+            } elseif($FWRule.Source.Contains("network")){
+                $FWRule.SourceAddress = ("{0} network" -f $FWRule.Source.network.InnerText)
+            }
+        }
+        
+        return $FWRules
     }
 }
 
@@ -620,18 +638,7 @@ Write-Host "All firewall rules" -NoNewline -BackgroundColor Gray -ForegroundColo
 # TODO: if you want to convert System.Collections.Hashtable into something more meaningful (display only), do it here
 #       obviously creating a Write-PFFirewallRule function would be an even better idea :)
 #       DO NOT change it in the ConvertTo-PFObject function, since that will really complicate the reverse operation (changing and uploading the rule)
-$FWRules = $PFServer | Get-PFFirewallRule
-foreach($FWRule in $FWRules){
-    if($FWRule.SourceType.Count -eq 1){
-        switch($FWRule.SourceType.Keys[0]){
-            "any"       { $FWRule.SourceType_ = "any" }
-            "network"   { $FWRule.SourceType_ = ("{0} network" -f $FWRule.SourceType.Values[0].InnerText) }
-            "address"   { $FWRule.SourceType_ = $FWRule.SourceType.Values[0].InnerText }
-        }
-    }
-    
-}
-$FWRules | Select-Object -ExcludeProperty SourceType, SourceAddress, SourcePort, DestType, DestAddress, DestPort | Format-table *
+$PFServer | Get-PFFirewallRule | Select-Object -ExcludeProperty Source, Destination | Format-table *
 
 Write-Host "Registered gateways" -NoNewline -BackgroundColor Gray -ForegroundColor DarkGray
 $PFServer | Get-PFGateway | Format-table *

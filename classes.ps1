@@ -89,13 +89,14 @@ class PFFirewallRule {
                  'igmp', 'pim', 'ospf', 'tp', 'carp', 'pfsync', '')]
         [string]$Protocol
 #    [ValidateSet('network', 'address', 'any')]
-    [hashtable]$SourceType
-    [string]$SourceType_
-    [hashtable]$SourceAddress
-    [hashtable]$SourcePort
-    [hashtable]$DestType
-    [hashtable]$DestAddress
-    [hashtable]$DestPort
+    [hashtable]$Source
+    [string]$SourceType
+    [string]$SourceAddress
+    [string]$SourcePort
+    [hashtable]$Destination
+    [string]$DestinationType
+    [string]$DestinationAddress
+    [string]$DestinationPort
     [string]$Description
 
     static [string]$Section = "filter/rule"
@@ -106,12 +107,12 @@ class PFFirewallRule {
         IsDisabled = "disabled"
         IsLogged = "log"
         Description = "descr"
-        SourceType = "source"
-        SourceAddress= "source"
-        SourcePort = "source"
-        DestType = "destination"
-        DestAddress= "destination"
-        DestPort = "destination"
+        Source = "source" 
+        SourceAddress= $null
+        SourcePort = $null
+        Destination = "destination"
+        DestAddress= $null
+        DestPort = $null
     }
 }
 
