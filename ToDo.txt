@@ -1,6 +1,5 @@
 All:
 - Interface name convertion
-- Empty fields are printed as "system.Xml.XmlElement"
 
 Alias:
 -All
@@ -9,7 +8,7 @@ dhcpd:
 -All
 
 dhcpStaticMap:
-- print hostname on a line, not interface
+-All 
 
 Firewall:
 - SourceType
@@ -20,7 +19,7 @@ Firewall:
 - DestinationPort
 
 gateway:
-Works
+-All
 
 interface:
 Works
@@ -29,14 +28,11 @@ StaticRoute:
 Works
 
 dnsResolver:
-- Make it one line
-- Active interface
-- outgoing Interface
+-All
 
 dnsResolverHost:
 Works
 
 portfwd:
 SourceAddress only works for network we need a way to try address any our network
-
 

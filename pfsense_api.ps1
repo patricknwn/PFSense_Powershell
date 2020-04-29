@@ -108,17 +108,26 @@ function ConvertTo-PFObject{
                     foreach($XMLProp in $XMLProperty.Split("/")){                    
                         $PropertyValue = $PropertyValue.$XMLProp
                     }
-                                        
+
+                    
                     If($PropertyValue -and ($PropertyValue.GetType() -eq [System.Xml.XmlElement])){
                         $PropertyValue = $PropertyValue.InnerText
                     }
-                    
+                    # The else if is for when a propertyvalue is a array of strings
+                    elseif($PropertyValue -and ($PropertyValue.GetType() -eq [System.Object[]])){
+                        $PropertyArray = New-Object System.Collections.ArrayList
+                        foreach($value in $PropertyValue){
+                            $PropertyArray.add($value.Innertext) | out-null
+                        }
+                        $PropertyValue = $PropertyArray
+                    }
+
                     # if($PropertyValue.string){$PropertyValue = $PropertyValue.string}
                     
                     $PropertyDefinition = ($Object | Get-Member -MemberType Properties | Where-Object { $_.Name -eq $Property }).Definition
                     $PropertyType = ($PropertyDefinition.Split(" ") | Select-Object -First 1).Replace("[]", "")
                     $PropertyIsCollection = $PropertyDefinition.Contains("[]")
-
+ 
                     # TODO: make the typed conversion work with non-collections too :)
                     if($PropertyIsCollection -and $PropertyValue){
                         if($Property -eq "Detail"){$PropertyValue = $PropertyValue.Split("||")}
@@ -151,7 +160,12 @@ function ConvertTo-PFObject{
                     $Property = $_.Name
                     $XMLProperty = ($PropertyMapping.$Property) ? $PropertyMapping.$Property : $Property.ToLower()
                     $PropertyValue = $null
-                    $PropertyValue = $ObjectToParse.$key
+                    if($XMLProperty -eq $key){
+                        $PropertyValue = $ObjectToParse
+                    }
+                    else{
+                        $PropertyValue = $ObjectToParse.$key
+                    }
                     foreach($XMLProp in $XMLProperty.Split("/")){
                         if($XMLProp -eq 'name'){
                             $PropertyValue = $key
@@ -164,7 +178,14 @@ function ConvertTo-PFObject{
                     If($PropertyValue -and ($PropertyValue.GetType() -eq [System.Xml.XmlElement])){
                         $PropertyValue = $PropertyValue.InnerText
                     }
-
+                    elseif($PropertyValue -and ($PropertyValue.GetType() -eq [System.Object[]])){
+                        $PropertyArray = New-Object System.Collections.ArrayList
+                        foreach($value in $PropertyValue){
+                            $PropertyArray.add($value.Innertext) | out-null
+                        }
+                        $PropertyValue = $PropertyArray 
+                    }
+                    
                     $PropertyDefinition = ($Object | Get-Member -MemberType Properties | Where-Object { $_.Name -eq $Property }).Definition
                     $PropertyType = ($PropertyDefinition.Split(" ") | Select-Object -First 1).Replace("[]", "")
                     $PropertyIsCollection = $PropertyDefinition.Contains("[]")
@@ -296,10 +317,29 @@ function Get-PFdhcpStaticMap {
     process {
         $InputObject = Get-PFConfiguration $InputObject
         $PFdhcpStaticMap = ConvertTo-PFObject -PFconfig $InputObject.PFconfig -PFObjectType "PFdhcpStaticMap"
-        return $PFdhcpStaticMap
+        $Object = (New-Object -TypeName "PFdhcpStaticMap")
+        $Collection = New-Object System.Collections.ArrayList
+        foreach($Staticmap in $PFdhcpStaticMap){
+            $indexStaticMap = 0 
+            $Properties = @{}
+                while($Staticmap.MACaddr[$indexStaticMap]){
+                    $Object | Get-Member -MemberType properties | Select-Object -Property Name | ForEach-Object {
+                        $Property = $_.Name
+                        if($Property -eq "interface"){$PropertyValue = $Staticmap.interface}
+                        else{
+                            try {$PropertyValue = $Staticmap.$Property[$indexStaticMap]}
+                            catch{$PropertyValue = $Staticmap.$Property}
+                        }
+                        $Properties.$Property = $PropertyValue
+                    }
+                    $Object = New-Object -TypeName "PFdhcpStaticMap" -Property $Properties
+                    $Collection.Add($Object) | Out-Null
+                    $indexStaticMap++
+                }
+        }
+        return $Collection
     }
 }
-
 
 function Get-PFFirewallRule {
     [CmdletBinding()]
@@ -365,15 +405,21 @@ function Get-PFUnbound {
     param ([Parameter(Mandatory=$true, ValueFromPipeline=$true)][Alias('Server')][psobject]$InputObject)
 
     process {
+        $Properties = @{}
         $InputObject = Get-PFConfiguration $InputObject
         $Unbound = ConvertTo-PFObject -PFconfig $InputObject.PFconfig -PFObjectType PFUnbound
+        $Object = New-Object -TypeName "PFUnbound" -Property $Properties
         foreach($Rule in $Unbound){
-            if($Rule.port -eq "0"){$Rule.port = "53"}
-            if($Rule.sslport -eq "0"){$Rule.sslport = "853"}
-        } 
-        return $Unbound  
+            $Object | Get-Member -MemberType properties | Select-Object -Property Name | ForEach-Object {
+                if($Rule.($_.name)){$Properties.($_.name) = $Rule.($_.name)}
+            }
+        }
+        if(-not $Properties.port){$Properties.port = "53"}
+        if(-not $Properties.sslport){$Properties.sslport = "853"}
+        $Object = New-Object -TypeName "PFUnbound" -Property $Properties
+        return $Object
     }
-}
+} 
 
 function Get-PFunboundHost {
     [CmdletBinding()]
@@ -623,6 +669,7 @@ $StaticInterface.keys | %{
 
 # test objects
 # make a clear visual distinction between this run and the previous run
+<#
 1..30 | ForEach-Object { Write-Host "" }
 
 Write-Host "Registered aliases:" -NoNewline -BackgroundColor Gray -ForegroundColor DarkGray
@@ -660,6 +707,7 @@ $PFServer | Get-PFUnboundHost | Format-table *
 
 Write-Host "THE END" -BackgroundColor Gray -ForegroundColor DarkGray
 exit;
+#>
 
 # define the possible execution flows
 $Flow = @{
