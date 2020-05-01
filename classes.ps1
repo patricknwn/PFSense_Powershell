@@ -24,8 +24,8 @@ class PFAlias {
 }
 
 class PFdhcpd{
-    [string]$interface
-#    [PFinterface]$interface
+    [string[]]$interface
+#    [PFinterface[]]$interface
     [string]$RangeFrom
     [string]$RangeTo
     [string]$netmask
@@ -90,11 +90,9 @@ class PFFirewallRule {
         [string]$Protocol
 #    [ValidateSet('network', 'address', 'any')]
     [hashtable]$Source
-    [string]$SourceType
     [string]$SourceAddress
     [string]$SourcePort
     [hashtable]$Destination
-    [string]$DestinationType
     [string]$DestinationAddress
     [string]$DestinationPort
     [string]$Description
@@ -221,6 +219,7 @@ class PFServer {
     [bool]$SkipCertificateCheck = $false
     [XML]$XMLConfig
     [psobject]$PFConfig
+    [psobject]$WorkingObject
     [psobject]$Config = @{
         Interfaces = $null
     }
