@@ -764,7 +764,11 @@ $PFServer | Get-PFAlias | Format-table *
 
 # works
 Write-Host "Registered DHCPd servers" -NoNewline -BackgroundColor Gray -ForegroundColor DarkGray
-$PFServer | Get-PFDHCPd | Format-table *
+$DHCPdServers = $PFServer | Get-PFDHCPd
+$DHCPdServers | Format-table *
+$DHCPdInterfaceType = ($DHCPdServers | Select-Object -First 1 -ExpandProperty Interface).GetType()
+$DHCPdInterfaceIsPFInterface = $DHCPdInterfaceType -eq [PFInterface]
+Write-Host ("Typecheck of Interface property of DHCPd server 1: {0}" -f $DHCPdInterfaceType) -ForegroundColor ($DHCPdInterfaceIsPFInterface ? "Green" : "Red")
 
 exit 
 Write-Host "Registered static DHCP leases" -NoNewline -BackgroundColor Gray -ForegroundColor DarkGray
