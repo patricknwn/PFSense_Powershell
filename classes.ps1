@@ -222,6 +222,7 @@ class PFServer {
     [psobject]$PFConfig = @{  # holds the PF* objects 
         Interfaces = $null
         # TODO: need more objects defined here, so that this code is self-documenting and there are no magic keys created throughout the code
+        # TODO: explore the idea of automagically creating all the keys from PSConfig as soon as we know them, i.e. in Get-PFConfiguration after the ConvertFrom-XML call
     }
     
     [string] ToString(){        

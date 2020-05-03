@@ -77,27 +77,29 @@ else {
 
 # dotsource the classes
 . .\classes.ps1
-function ConvertToPFObject{
+function ConvertTo-PFObject{
     [CmdletBinding()]
     param (
-        [Parameter(Mandatory=$true)]$InputObject,
-        [Parameter(Mandatory=$false)]$PFObjectType
+        [Parameter(Mandatory=$true, ValueFromPipeline=$true, ValueFromPipelineByPropertyName=$true)][PFServer]$InputObject,
+        [Parameter(Mandatory=$true)]$PFObjectType
     )
+
     begin{
         $Object = (New-Object -TypeName $PFObjectType)
         $PropertyMapping = $Object::PropertyMapping
         $Collection = New-Object System.Collections.ArrayList
-
         $Properties = @{}
     } 
+
     process { 
-        $ObjectToParse = $InputObject.PFconfig
+        $ObjectToParse = $InputObject.PSConfig
         foreach($XMLPFObj in ($Object::section).Split("/")){
             $ObjectToParse = $ObjectToParse.$XMLPFObj
         } 
         $PropertyValue = $null
         $index = 0 
-        # This IF statement is to see if the $ObjectToParse is a array of object (this happens with the interface), if it is a array, we need to loop to each item to get it's value's
+
+        # This IF statement is to see if the $ObjectToParse is a array of object (this happens with the interface), if it is a array, we need to loop to each item to Get- it's value's
         if ($ObjectToParse[$Index]){
             write-host "IF"
             while($ObjectToParse[$index]){
@@ -152,7 +154,8 @@ function ConvertToPFObject{
                 $index++
             }
         }
-        # If $ObjectToParse isn't a array we use a slightily different way to get it's value's
+
+        # If $ObjectToParse isn't a array we use a slightily different way to Get- it's value's
         else{
             write-host "Else"
 #            foreach($key in $PFconfig.($Object::section).keys){
@@ -219,9 +222,9 @@ function ConvertToPFObject{
             $Collection.Add($Object) | Out-Null
             }
         }
-        $InputObject.WorkingObject = $Collection 
-        return $InputObject
-
+        
+        # return the collection with PF* objects
+        return $Collection
     }
 }
 
@@ -251,7 +254,7 @@ function FormatXml {
         }
 }
 
-function GetPFConfiguration {
+function Get-PFConfiguration {
     <#
     .SYNOPSIS
         Fetch the current configuration from a pfSense server via XML-RPC. Convert the XML-RPC answer to a Powershell object.
@@ -285,26 +288,26 @@ function GetPFConfiguration {
     [OutputType('PFServer')] 
     [CmdletBinding()]
     param (
-        [Parameter(Mandatory=$true, ValueFromPipeline=$true, ValueFromPipelineByPropertyName=$true)]
+        [Parameter(Mandatory=$true, ValueFromPipeline=$true)]
             [Alias('Server')]
             [PFServer]$InputObject,
-        [Parameter(Mandatory=$false, ValueFromPipelineByPropertyName=$true)]
+        [Parameter(Mandatory=$false)]
             [switch]$NoCache
     )
     
     process {
         # check for scenario 3, i.e. forced refresh of possibly stale cached configuration. 
-        # Set both the XMLConfig and PSConfig properties to $null to force the InvokePFXMLRPCRequest to be executed
+        # Set both the XMLConfig and PSConfig properties to $null to force the Invoke-PFXMLRPCRequest to be executed
         if($NoCache){ $InputObject.XMLConfig = $InputObject.PSConfig = $null }
 
         # check if the XML configuration has been saved and is valid (scenario 2). If this is NOT the case (i.e. scenario 1), update the configuration.
         if((-not $InputObject.XMLConfig) -or ($InputObject.XMLConfig.GetType() -ne [XML])){
             try{
-                $InputObject.XMLConfig = InvokePFXMLRPCRequest -InputObject $InputObject -Method 'exec_php' -MethodParameter 'global $config; $toreturn=$config;'
+                $InputObject.XMLConfig = Invoke-PFXMLRPCRequest -InputObject $InputObject -Method 'exec_php' -MethodParameter 'global $config; $toreturn=$config;'
                 $InputObject.PSConfig = ConvertFrom-Xml -InputObject $InputObject.XMLConfig
 
             } catch {
-                # TODO: do some proper error handling here. Need to handle the exceptions that InvokePFXMLRPCRequest or ConvertFrom-XML can throw
+                # TODO: do some proper error handling here. Need to handle the exceptions that Invoke-PFXMLRPCRequest or ConvertFrom-XML can throw
                 Write-Error $_.Exception.Message
                 Write-Error $_.Exception
                 exit 1
@@ -315,38 +318,94 @@ function GetPFConfiguration {
     }    
 }
 
-function GetPFInterface {
+function Get-PFInterface {
+    <#
+    .SYNOPSIS 
+        Get a PFInterface object for all interfaces that are available in the pfSense
+
+    .DESCRIPTION
+
+    .PARAMETER Server
+        Alias for InputObject, accepts the pipeline input. This should be a PFServer object.
+
+    .PARAMETER Name
+        Optional parameter to filter by name. 
+    #>
     [CmdletBinding()]
-    param ([Parameter(Mandatory=$true, ValueFromPipeline=$true)][Alias('Server')][PFServer]$InputObject)   
+    param (
+        [Parameter(Mandatory=$true, ValueFromPipeline=$true)][Alias('Server')][PFServer]$InputObject,
+        [Parameter(Mandatory=$false)][string]$Name
+    )   
     process { 
-        ConvertToPFObject -InputObject $InputObject -PFObjectType "PFInterface" | out-null
-        return $InputObject | out-null
+        # TODO: for performance reasons, you might want to consider a check if the interfaces exist already. In that case, you can simply return the existing version already.
+        #       without that addition is might perform a few extra steps every time, but it's very unlikely that it will be a bottleneck.
+
+        # Since we will add some interfaces later on, the $Interfaces array needs to be extensible and hence be explictly defined as ArrayList first
+        $Interfaces = New-Object System.Collections.ArrayList
+
+        # Retrieve the explicitly defined interfaces from the pfSense configuration.  
+        $InputObject | 
+            ConvertTo-PFObject -PFObjectType "PFInterface" |
+                ForEach-Object { $Interfaces.Add($_) | Out-Null }
+        
+        # add the IPv6 LinkLocal name and description so these can be translated
+        $InterfacesFromConfig | ForEach-Object {
+            $Properties = @{
+                Name = "_lloc{0}" -f $_.Name
+                Description = "{0}IpV6LinkLocal" -f (($_.Description) ? $_.Description : $_.Name)
+            }
+             
+            $EphemeralInterface = New-Object -TypeName "PFInterface" -Property $Properties
+            $Interfaces.Add($EphemeralInterface) | Out-Null    
+        }
+
+        # there is also a number of implicitly defined interfaces that do not appear in the configuration
+        # these are the Link Local, loopback and the IPv6 interfaces. 
+        # there is also a special interface All, which is a reference to all interfaces. This one is used for example in service configurations
+        # that should listen on all interfaces and is functionally equivalent to :: . 
+        # However, in the configuration for these services (e.g. DNS server) it appears as string "all"
+        # We need to manually create these "static interfaces" to satisfy the type definition/conversion on the PF* where an interface is defined
+        # as [PFInterface]$Interface (or [PFInterface[]]$Interface in some cases.)
+        (@{ all = 'All'; lo0 = 'Loopback' }).GetEnumerator() | ForEach-Object {
+            $EphemeralInterface =  New-Object -TypeName "PFInterface" -Property @{ Name = $_.Key; Description = $_.Value }
+            $Interfaces.Add($EphemeralInterface) | Out-Null
+        }
+
+        # return section
+        # return all the interfaces if no $Name parameter was given
+        if([string]::IsNullOrWhitespace($Name)){
+            return $Interfaces
+        
+        # return the $Interfaces, filtered by Name -eq $Name
+        } else {           
+            return ($Interfaces | Where-Object { $_.Name -eq $Name })
+        }
     }
         
 }
-function GetPFAlias {
+function Get-PFAlias {
     [CmdletBinding()]
     param ([Parameter(Mandatory=$true, ValueFromPipeline=$true)][Alias('Server')][PFServer]$InputObject)
     process {
-        ConvertToPFObject -InputObject $InputObject -PFObjectType "PFAlias" | out-null
+        ConvertTo-PFObject -InputObject $InputObject -PFObjectType "PFAlias" | out-null
         return $InputObject | out-null
     }
 }
 
-function GetPFdhcpd {
+function Get-PFdhcpd {
     [CmdletBinding()]
     param ([Parameter(Mandatory=$true, ValueFromPipeline=$true)][Alias('Server')][PFServer]$InputObject)
     process {
-        ConvertToPFObject -InputObject $InputObject -PFObjectType "PFdhcpd" | out-null
+        ConvertTo-PFObject -InputObject $InputObject -PFObjectType "PFdhcpd" | out-null
         return $InputObject | out-null
     }
 } 
 
-function GetPFdhcpStaticMap {
+function Get-PFdhcpStaticMap {
     [CmdletBinding()]
     param ([Parameter(Mandatory=$true, ValueFromPipeline=$true)][Alias('Server')][PFServer]$InputObject)
     process {
-        ConvertToPFObject -InputObject $InputObject -PFObjectType "PFdhcpStaticMap" | out-null
+        ConvertTo-PFObject -InputObject $InputObject -PFObjectType "PFdhcpStaticMap" | out-null
         return $InputObject | out-null
     }
 }
@@ -379,11 +438,11 @@ function PrintPFdhcpStaticMap {
     }
 }
 
-function GetPFFirewallRule {
+function Get-PFFirewallRule {
     [CmdletBinding()]
     param ([Parameter(Mandatory=$true, ValueFromPipeline=$true)][Alias('Server')][PFServer]$InputObject)
     process {
-        ConvertToPFObject -InputObject $InputObject -PFObjectType "PFfirewallRule" | out-null
+        ConvertTo-PFObject -InputObject $InputObject -PFObjectType "PFfirewallRule" | out-null
         return $InputObject | out-null
     }
 }
@@ -413,37 +472,37 @@ function PrintPFFirewallRule {
     }
 }
 
-function GetPFGateway {
+function Get-PFGateway {
     [CmdletBinding()]
     param ([Parameter(Mandatory=$true, ValueFromPipeline=$true)][Alias('Server')][PFServer]$InputObject)
     process {
-        ConvertToPFObject -InputObject $InputObject -PFObjectType "PFGateway" | out-null
+        ConvertTo-PFObject -InputObject $InputObject -PFObjectType "PFGateway" | out-null
         return $InputObject | out-null
     }
 }
-function GetPFNATRule {
+function Get-PFNATRule {
     [CmdletBinding()]
     param ([Parameter(Mandatory=$true, ValueFromPipeline=$true)][Alias('Server')][PFServer]$InputObject)
     process {
-        ConvertToPFObject -InputObject $InputObject -PFObjectType "PFnatRule" | out-null
+        ConvertTo-PFObject -InputObject $InputObject -PFObjectType "PFnatRule" | out-null
         return $InputObject | out-null
     }
 
 }
-function GetPFStaticRoute {
+function Get-PFStaticRoute {
     [CmdletBinding()]
     param ([Parameter(Mandatory=$true, ValueFromPipeline=$true)][Alias('Server')][psobject]$InputObject)
     process {
-        ConvertToPFObject -InputObject $InputObject -PFObjectType "PFStaticRoute" | out-null
+        ConvertTo-PFObject -InputObject $InputObject -PFObjectType "PFStaticRoute" | out-null
         return $InputObject | out-null
     }
 }
 
-function GetPFUnbound {
+function Get-PFUnbound {
     [CmdletBinding()]
     param ([Parameter(Mandatory=$true, ValueFromPipeline=$true)][Alias('Server')][psobject]$InputObject)
     process {
-        ConvertToPFObject -InputObject $InputObject -PFObjectType "PFUnbound" | out-null
+        ConvertTo-PFObject -InputObject $InputObject -PFObjectType "PFUnbound" | out-null
         return $InputObject | out-null
     }
 } 
@@ -467,15 +526,15 @@ function PrintPFUnbound {
     }
 } 
 
-function GetPFunboundHost {
+function Get-PFunboundHost {
     [CmdletBinding()]
     param ([Parameter(Mandatory=$true, ValueFromPipeline=$true)][Alias('Server')][psobject]$InputObject)
     process { 
-        ConvertToPFObject -InputObject $InputObject -PFObjectType "PFunboundHost"
+        ConvertTo-PFObject -InputObject $InputObject -PFObjectType "PFunboundHost"
     }
 }
 
-function InvokePFXMLRPCRequest {
+function Invoke-PFXMLRPCRequest {
     <#
     .DESCRIPTION
         https://github.com/pfsense/pfsense/blob/master/src/usr/local/www/xmlrpc.php
@@ -609,7 +668,7 @@ function TestPFCredential {
             }
             
             Write-Debug "Trying credentials for user '$($Server.Credential.UserName)'"
-            InvokePFXMLRPCRequest -Server $Server -Method 'host_firmware_version' | Out-Null
+            Invoke-PFXMLRPCRequest -Server $Server -Method 'host_firmware_version' | Out-Null
 
         # catch when use of the system is not possible with this credentials
         } catch [System.Security.Authentication.InvalidCredentialException],
@@ -670,41 +729,14 @@ try{
     Write-Progress -Activity "Testing connection and your credentials" -Completed
 }
 
-# Get all config information so that we can see what's inside
-$PFServer = ($PFServer | GetPFConfiguration -NoCache)
+# Get- all config information so that we can see what's inside
+$PFServer = ($PFServer | Get-PFConfiguration -NoCache)
 
 # We will have frequent reference to the [PFInterface] objects, to make them readily available
-GetPFInterface -Server $PFServer
-$PFServer.Config.Interfaces = $PFServer.WorkingObject
+$PFServer | Get-PFInterface | Format-Table *
+$PFServer | Get-PFInterface -Name "lan" | Format-Table *
 
-# add the IPv6 LinkLocal name and description so these can be translated
-foreach($interface in $PFServer.Config.Interfaces){
-    $Properties = @{}
-    if($interface.DESCRIPTION){
-        # If the interface has a description set it as part of it's ipv6 linklocal name
-        $Properties.Name = "_lloc{0}" -f $interface.name
-        $Properties.Description = "{0}IpV6LinkLocal" -f $interface.DESCRIPTION
-    }
-    else{
-        # else use the name as part of the ipv6 linklocal name
-        $Properties.Name = "_lloc{0}" -f $interface.name
-        $Properties.Description = "{0}IpV6LinkLocal" -f $interface.name
-    }
-    $Object = New-Object -TypeName PFInterface -Property $Properties
-    $PFServer.Config.Interfaces = $PFServer.Config.Interfaces + $Object     
-}
-# add some default name translations to the interface's like "all" and "Loopback"
-$StaticInterface = @{
-    all = 'all'
-    lo0 = 'Loopback'
-}
-$StaticInterface.keys | %{
-    $Properties = @{}
-    $Properties.name = $_
-    $Properties.Description = $StaticInterface.Item($_)
-    $Object = New-Object -TypeName PFInterface -Property $Properties
-    $PFServer.Config.Interfaces = $PFServer.Config.Interfaces + $Object 
-}
+exit
 
 # test objects
 # make a clear visual distinction between this run and the previous run
@@ -712,37 +744,37 @@ $StaticInterface.keys | %{
 1..30 | ForEach-Object { Write-Host "" }
 
 Write-Host "Registered aliases:" -NoNewline -BackgroundColor Gray -ForegroundColor DarkGray
-$PFServer | GetPFAlias | Format-table *
+$PFServer | Get-PFAlias | Format-table *
 
 Write-Host "Registered DHCPd servers" -NoNewline -BackgroundColor Gray -ForegroundColor DarkGray
-$PFServer | GetPFdhcpd | Format-table *
+$PFServer | Get-PFdhcpd | Format-table *
 
 Write-Host "Registered static DHCP leases" -NoNewline -BackgroundColor Gray -ForegroundColor DarkGray
-$PFServer | GetPFDHCPStaticMap | Format-table *
+$PFServer | Get-PFDHCPStaticMap | Format-table *
 
 Write-Host "All firewall rules" -NoNewline -BackgroundColor Gray -ForegroundColor DarkGray
 # TODO: if you want to convert System.Collections.Hashtable into something more meaningful (display only), do it here
 #       obviously creating a Write-PFFirewallRule function would be an even better idea :)
-#       DO NOT change it in the ConvertToPFObject function, since that will really complicate the reverse operation (changing and uploading the rule)
-$PFServer | GetPFFirewallRule | Select-Object -ExcludeProperty Source, Destination | Format-table *
+#       DO NOT change it in the ConvertTo-PFObject function, since that will really complicate the reverse operation (changing and uploading the rule)
+$PFServer | Get-PFFirewallRule | Select-Object -ExcludeProperty Source, Destination | Format-table *
 
 Write-Host "Registered gateways" -NoNewline -BackgroundColor Gray -ForegroundColor DarkGray
-$PFServer | GetPFGateway | Format-table *
+$PFServer | Get-PFGateway | Format-table *
 
 Write-Host "Available interfaces" -NoNewline -BackgroundColor Gray -ForegroundColor DarkGray
-$PFServer | GetPFInterface | Format-table *
+$PFServer | Get-PFInterface | Format-table *
 
 Write-Host "All NAT rules" -NoNewline -BackgroundColor Gray -ForegroundColor DarkGray
-$PFServer | GetPFNATRule | Format-table *
+$PFServer | Get-PFNATRule | Format-table *
 
 Write-Host "All static routes" -NoNewline -BackgroundColor Gray -ForegroundColor DarkGray
-$PFServer | GetPFStaticRoute | Format-table *
+$PFServer | Get-PFStaticRoute | Format-table *
 
 Write-Host "DNS server settings" -NoNewline -BackgroundColor Gray -ForegroundColor DarkGray
-$PFServer | GetPFUnbound | Format-table *
+$PFServer | Get-PFUnbound | Format-table *
 
 Write-Host "DNS host overrides" -NoNewline -BackgroundColor Gray -ForegroundColor DarkGray
-$PFServer | GetPFunboundHost | Format-table *
+$PFServer | Get-PFunboundHost | Format-table *
 
 Write-Host "THE END" -BackgroundColor Gray -ForegroundColor DarkGray
 exit;
@@ -751,37 +783,37 @@ exit;
 <# define the possible execution flows
 $Flow = @{
     "alias" = @{
-        "print" = "param(`$InputObject); `$InputObject | GetPFAlias; `$InputObject.WorkingObject | Format-Table *"#the star makes the format table show more than 10 column's
+        "print" = "param(`$InputObject); `$InputObject | Get-PFAlias; `$InputObject.WorkingObject | Format-Table *"#the star makes the format table show more than 10 column's
     }
 
     "gateway" = @{
-        "print" = "param(`$InputObject); `$InputObject | GetPFGateway; `$InputObject.WorkingObject | Format-Table *"
+        "print" = "param(`$InputObject); `$InputObject | Get-PFGateway; `$InputObject.WorkingObject | Format-Table *"
     }
 
     "interface" = @{
-        "print" = "param(`$InputObject); `$InputObject | GetPFInterface; `$InputObject.WorkingObject | Format-Table *"
+        "print" = "param(`$InputObject); `$InputObject | Get-PFInterface; `$InputObject.WorkingObject | Format-Table *"
     }
 
     "StaticRoute" = @{
-        "print" = "param(`$InputObject); `$InputObject | GetPFStaticRoute; `$InputObject.WorkingObject | Format-table *"
+        "print" = "param(`$InputObject); `$InputObject | Get-PFStaticRoute; `$InputObject.WorkingObject | Format-table *"
     }
 
     "dnsResolver" = @{
-        "print" = "param(`$InputObject); `$InputObject | GetPFUnbound; `$InputObject | PrintPFUnbound; `$InputObject.WorkingObject | Format-table *"
+        "print" = "param(`$InputObject); `$InputObject | Get-PFUnbound; `$InputObject | PrintPFUnbound; `$InputObject.WorkingObject | Format-table *"
     }    
 
     "dnsResolverHost" = @{
-        "print" = "param(`$InputObject); `$InputObject | GetPFunboundHost; `$InputObject.WorkingObject | Format-table *"
+        "print" = "param(`$InputObject); `$InputObject | Get-PFunboundHost; `$InputObject.WorkingObject | Format-table *"
     }   
 
     "portfwd" = @{
-        "print" = "param(`$InputObject); `$InputObject | GetPFNATRule; `$InputObject.WorkingObject | Format-table *"
+        "print" = "param(`$InputObject); `$InputObject | Get-PFNATRule; `$InputObject.WorkingObject | Format-table *"
     }    
     "Firewall" = @{
-        "print" = "param(`$InputObject); `$InputObject | GetPFFirewallRule; `$InputObject | PrintPFFirewallRule; `$InputObject.WorkingObject | Select-Object -ExcludeProperty Source, Destination | Format-table *" 
+        "print" = "param(`$InputObject); `$InputObject | Get-PFFirewallRule; `$InputObject | PrintPFFirewallRule; `$InputObject.WorkingObject | Select-Object -ExcludeProperty Source, Destination | Format-table *" 
     } 
     "dhcpd" = @{
-        "print" = "param(`$InputObject); `$InputObject | GetPFdhcpd; `$InputObject.WorkingObject | Format-table *" 
+        "print" = "param(`$InputObject); `$InputObject | Get-PFdhcpd; `$InputObject.WorkingObject | Format-table *" 
     } 
     "dhcpStaticMap" = @{
         "print" = "param(`$InputObject); `$InputObject | Get-PFdhcpStaticMap; `$InputObject | PrintPFdhcpStaticMap; `$InputObject.WorkingObject | Format-table * -autosize" 
