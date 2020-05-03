@@ -23,9 +23,8 @@ class PFAlias {
     }
 }
 
-class PFdhcpd{
-    [string[]]$interface
-#    [PFinterface[]]$interface
+class PFDHCPd{
+    [PFInterface]$Interface
     [string]$RangeFrom
     [string]$RangeTo
     [string]$netmask

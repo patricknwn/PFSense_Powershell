@@ -146,7 +146,7 @@ function ConvertTo-PFObject{
                             switch($PropertyType){
                                 "PFInterface" {
                                     $PropertyTypedValue.Add(
-                                        ($PFconfig.Interfaces | Where-Object { $_.Name -eq $Item })
+                                        ($InputObject | Get-PFInterface -Name $Item)
                                     ) | Out-Null
                                 }
                             }
@@ -210,10 +210,16 @@ function ConvertTo-PFObject{
                             switch($PropertyType){
                                 "PFInterface" {
                                     $PropertyTypedValue.Add(
-                                        ($PFconfig.Interfaces.keys | Where-Object { $_ -eq $Item }) 
+                                        ($InputObject | Get-PFInterface -Name $Item)
                                     ) | Out-Null
                                 } 
                             }
+                        }
+
+                    # obviously it should work for non-collections too. This screams for some refactoring, btw!
+                    } elseif($PropertyValue){
+                        switch($PropertyType){
+                            "PFInterface" { $PropertyValue = $InputObject | Get-PFInterface -Name $PropertyValue } 
                         }
                     }
                     
@@ -399,12 +405,11 @@ function Get-PFAlias {
     }
 }
 
-function Get-PFdhcpd {
+function Get-PFDHCPd {
     [CmdletBinding()]
     param ([Parameter(Mandatory=$true, ValueFromPipeline=$true)][Alias('Server')][PFServer]$InputObject)
     process {
-        ConvertTo-PFObject -InputObject $InputObject -PFObjectType "PFdhcpd" | out-null
-        return $InputObject | out-null
+        $InputObject | ConvertTo-PFObject -PFObjectType "PFDHCPd"
     }
 } 
 
@@ -748,19 +753,20 @@ $PFServer = ($PFServer | Get-PFConfiguration -NoCache)
 Write-Host "Known interfaces:" -NoNewline -BackgroundColor Gray -ForegroundColor DarkGray
 $PFServer | Get-PFInterface | Format-table *
 
+# works
 Write-Host "LAN interface:" -NoNewline -BackgroundColor Gray -ForegroundColor DarkGray
 $PFServer | Get-PFInterface -Name "lan" | Format-table *
-
 
 # works
 # TODO: separate each address/detail in a separate child object, like PFAliasEntry or something like that. Each PFAlias should then contain a collection of these.
 Write-Host "Registered aliases:" -NoNewline -BackgroundColor Gray -ForegroundColor DarkGray
 $PFServer | Get-PFAlias | Format-table *
 
-exit 
+# works
 Write-Host "Registered DHCPd servers" -NoNewline -BackgroundColor Gray -ForegroundColor DarkGray
-$PFServer | Get-PFdhcpd | Format-table *
+$PFServer | Get-PFDHCPd | Format-table *
 
+exit 
 Write-Host "Registered static DHCP leases" -NoNewline -BackgroundColor Gray -ForegroundColor DarkGray
 $PFServer | Get-PFDHCPStaticMap | Format-table *
 
@@ -825,7 +831,7 @@ $Flow = @{
         "print" = "param(`$InputObject); `$InputObject | Get-PFFirewallRule; `$InputObject | PrintPFFirewallRule; `$InputObject.WorkingObject | Select-Object -ExcludeProperty Source, Destination | Format-table *" 
     } 
     "dhcpd" = @{
-        "print" = "param(`$InputObject); `$InputObject | Get-PFdhcpd; `$InputObject.WorkingObject | Format-table *" 
+        "print" = "param(`$InputObject); `$InputObject | Get-PFDHCPd; `$InputObject.WorkingObject | Format-table *" 
     } 
     "dhcpStaticMap" = @{
         "print" = "param(`$InputObject); `$InputObject | Get-PFdhcpStaticMap; `$InputObject | PrintPFdhcpStaticMap; `$InputObject.WorkingObject | Format-table * -autosize" 
