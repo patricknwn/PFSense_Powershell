@@ -252,36 +252,65 @@ function FormatXml {
 }
 
 function GetPFConfiguration {
+    <#
+    .SYNOPSIS
+        Fetch the current configuration from a pfSense server via XML-RPC. Convert the XML-RPC answer to a Powershell object.
+    
+    .DESCRIPTION
+        This function takes a PFServer object and adds to it the configuration for this server. 
+        
+        There are three scenario's which are supported by this function:
+        1) The PFServer object has no XMLConfig saved
+        2) The PFServer object has a XMLConfig saved already
+        3) The PFServer object has a XMLConfig saved already but the user wants to have it refreshed
+
+        Ad 1: 
+        If there is no XML configuration in the PFServer object, it will be fetched from the pfSense as defined in the PFServer object.
+        After fetching and validating the XML, it will be converted into a Powershell object for easier parsing by other functions.
+
+        Ad 2:
+        The supplied PFServer object already has a configuration stored inside. Do nothing and just return the PFServer object.
+
+        Ad 3:
+        For some reason the user suspects the saved configuration (if any) might be stale so it should be refreshed. It can do do so by setting
+        the -NoCache flag to force scenario 1 to be executed after clearing the currently saved configuration.
+    
+    .PARAMETER Server
+        The PFServer object to act on. This value can be passed by pipeline and multiple PFServer objects can be passed that way at once.
+
+    .PARAMETER NoCache
+        Switch to indicate that any saved configuration MUST be refreshed by querying the pfSense server
+
+    #>
+    [OutputType('PFServer')] 
     [CmdletBinding()]
     param (
-        [Parameter(Mandatory=$true, ValueFromPipeline=$true)]
+        [Parameter(Mandatory=$true, ValueFromPipeline=$true, ValueFromPipelineByPropertyName=$true)]
             [Alias('Server')]
             [PFServer]$InputObject,
-        [Parameter(Mandatory=$false, HelpMessage="The section of the configuration you want, e.g. interfaces or system/dnsserver")]
-            [string]$Section        
+        [Parameter(Mandatory=$false, ValueFromPipelineByPropertyName=$true)]
+            [switch]$NoCache
     )
     
-    begin {
-        # Due to some changes, this whole section thing isn't very relevant anymore and might introduce extra bugs.
-        # TODO: consider removing this section thing support
-        if(-not [string]::IsNullOrWhiteSpace($Section)){
-            $Section = $Section -split "/" | Join-String -Separator "']['" -OutputPrefix "['" -OutputSuffix "']"
-        }
-    }
-    
     process {
-        $XMLConfig = $null
+        # check for scenario 3, i.e. forced refresh of possibly stale cached configuration. 
+        # Set both the XMLConfig and PSConfig properties to $null to force the InvokePFXMLRPCRequest to be executed
+        if($NoCache){ $InputObject.XMLConfig = $InputObject.PSConfig = $null }
 
-        if($InputObject.XMLConfig -and $InputObject.XMLConfig.GetType() -eq [XML] -and [string]::IsNullOrWhiteSpace($Section)){             
-            $XMLConfig = $InputObject.XMLConfig
-        
-        } else {
-            $XMLConfig = InvokePFXMLRPCRequest -Server $InputObject -Method 'exec_php' -MethodParameter ('global $config; $toreturn=$config{0};' -f $Section)
+        # check if the XML configuration has been saved and is valid (scenario 2). If this is NOT the case (i.e. scenario 1), update the configuration.
+        if((-not $InputObject.XMLConfig) -or ($InputObject.XMLConfig.GetType() -ne [XML])){
+            try{
+                $InputObject.XMLConfig = InvokePFXMLRPCRequest -InputObject $InputObject -Method 'exec_php' -MethodParameter 'global $config; $toreturn=$config;'
+                $InputObject.PSConfig = ConvertFrom-Xml -InputObject $InputObject.XMLConfig
+
+            } catch {
+                # TODO: do some proper error handling here. Need to handle the exceptions that InvokePFXMLRPCRequest or ConvertFrom-XML can throw
+                Write-Error $_.Exception.Message
+                Write-Error $_.Exception
+                exit 1
+            }
         }
-        
-        #TODO: fetch only the relevant section if contains other sections too. Low prio.
-        $InputObject.XMLConfig = $XMLConfig
-        $InputObject.PFconfig = (ConvertFrom-Xml -InputObject $XMLConfig)
+
         return $InputObject
     }    
 }
@@ -384,7 +413,6 @@ function PrintPFFirewallRule {
     }
 }
 
-
 function GetPFGateway {
     [CmdletBinding()]
     param ([Parameter(Mandatory=$true, ValueFromPipeline=$true)][Alias('Server')][PFServer]$InputObject)
@@ -439,13 +467,11 @@ function PrintPFUnbound {
     }
 } 
 
-
 function GetPFunboundHost {
     [CmdletBinding()]
     param ([Parameter(Mandatory=$true, ValueFromPipeline=$true)][Alias('Server')][psobject]$InputObject)
     process { 
-        ConvertToPFObject -InputObject $InputObject -PFObjectType "PFunboundHost" | out-null
-        return $InputObject | out-null
+        ConvertToPFObject -InputObject $InputObject -PFObjectType "PFunboundHost"
     }
 }
 
@@ -611,8 +637,7 @@ function TestPFCredential {
 # TODO: create a switch for the program to skip this contoller logic and be able to test dotsourcing this file in your own scripts too.
 Clear-Host
 
-$PFServer = [PFServer]@{
-    Credential = $null 
+$PFServer = New-Object PFServer -Property @{
     Address = $Server
     NoTLS = $NoTLS
     SkipCertificateCheck = $SkipCertificateCheck
@@ -646,11 +671,7 @@ try{
 }
 
 # Get all config information so that we can see what's inside
-$PFServer = GetPFConfiguration -Server $PFServer -Section  "" 
-if(-not $PFServer.XMLConfig -or $PFServer.XMLConfig.GetType() -ne [XML]){ 
-    Write-Error "Unable to fetch the pfSense configuration."
-    exit 1
-}
+$PFServer = ($PFServer | GetPFConfiguration -NoCache)
 
 # We will have frequent reference to the [PFInterface] objects, to make them readily available
 GetPFInterface -Server $PFServer
@@ -687,7 +708,7 @@ $StaticInterface.keys | %{
 
 # test objects
 # make a clear visual distinction between this run and the previous run
-<#
+#<#
 1..30 | ForEach-Object { Write-Host "" }
 
 Write-Host "Registered aliases:" -NoNewline -BackgroundColor Gray -ForegroundColor DarkGray
@@ -697,7 +718,7 @@ Write-Host "Registered DHCPd servers" -NoNewline -BackgroundColor Gray -Foregrou
 $PFServer | GetPFdhcpd | Format-table *
 
 Write-Host "Registered static DHCP leases" -NoNewline -BackgroundColor Gray -ForegroundColor DarkGray
-$PFServer | Get-PFDHCPStaticMap | Format-table *
+$PFServer | GetPFDHCPStaticMap | Format-table *
 
 Write-Host "All firewall rules" -NoNewline -BackgroundColor Gray -ForegroundColor DarkGray
 # TODO: if you want to convert System.Collections.Hashtable into something more meaningful (display only), do it here
@@ -727,7 +748,7 @@ Write-Host "THE END" -BackgroundColor Gray -ForegroundColor DarkGray
 exit;
 #>
 
-# define the possible execution flows
+<# define the possible execution flows
 $Flow = @{
     "alias" = @{
         "print" = "param(`$InputObject); `$InputObject | GetPFAlias; `$InputObject.WorkingObject | Format-Table *"#the star makes the format table show more than 10 column's
@@ -780,3 +801,4 @@ try{
     Write-Error $_.Exception
     exit 1    
 }
+#>

@@ -51,26 +51,26 @@ class PFdhcpd{
 class PFdhcpStaticMap{
     [string]$interface
 #    [PFInterface[]]$Interface
-    [string[]]$Hostname
-    [string[]]$Domain
-    [string[]]$ClientID
-    [string[]]$MACaddr
-    [string[]]$IPaddr
-    [string[]]$Description
-    [string[]]$Gateway
-    [string[]]$DNSserver
-    [string[]]$NTPServer
+    [string]$Hostname
+    [string]$Domain
+    [string]$ClientID
+    [string]$MACaddr
+    [string]$IPaddr
+    [string]$Description
+    [string]$Gateway
+    [string]$DNSserver
+    [string]$NTPServer
 
-    static [string]$Section = "dhcpd"
+    static [string]$Section = "dhcpd/staticmap"
     # property name as it appears in the XML, insofar it's different from the object's property name
     static $PropertyMapping = @{
-        Interface = "name"
-        Hostname = "Staticmap/Hostname"
-        Domain = "Staticmap/Domain"
-        ClientID = "Staticmap/CID"
-        IPaddr = "Staticmap/IPaddr"
-        Description  = "Staticmap/descr"
-        MACaddr  = "Staticmap/mac"
+        Interface = "../name"
+        Hostname = "Hostname"
+        Domain = "Domain"
+        ClientID = "CID"
+        IPaddr = "IPaddr"
+        Description  = "descr"
+        MACaddr  = "mac"
     }
 }
 
@@ -217,11 +217,11 @@ class PFServer {
     [pscredential]$Credential
     [bool]$NoTLS
     [bool]$SkipCertificateCheck = $false
-    [XML]$XMLConfig
-    [psobject]$PFConfig
-    [psobject]$WorkingObject
-    [psobject]$Config = @{
+    [System.Xml.XmlDocument]$XMLConfig     # XML-RPC answer when requesting the current configuration
+    [psobject]$PSConfig # $this.XMLConfig parsed to powershell objects by the XmlRpc library
+    [psobject]$PFConfig = @{  # holds the PF* objects 
         Interfaces = $null
+        # TODO: need more objects defined here, so that this code is self-documenting and there are no magic keys created throughout the code
     }
     
     [string] ToString(){        
