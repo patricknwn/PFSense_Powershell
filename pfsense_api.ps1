@@ -329,7 +329,7 @@ function Get-PFInterface {
         Alias for InputObject, accepts the pipeline input. This should be a PFServer object.
 
     .PARAMETER Name
-        Optional parameter to filter by name. 
+        Optional parameter to filter by interface name. 
     #>
     [CmdletBinding()]
     param (
@@ -340,10 +340,10 @@ function Get-PFInterface {
         # TODO: for performance reasons, you might want to consider a check if the interfaces exist already. In that case, you can simply return the existing version already.
         #       without that addition is might perform a few extra steps every time, but it's very unlikely that it will be a bottleneck.
 
-        # Since we will add some interfaces later on, the $Interfaces array needs to be extensible and hence be explictly defined as ArrayList first
+        # Since we will add some ephemeral interfaces later on, the $Interfaces array needs to be extensible and hence be explictly defined as ArrayList first
         $Interfaces = New-Object System.Collections.ArrayList
 
-        # Retrieve the explicitly defined interfaces from the pfSense configuration.  
+        # Retrieve the explicitly defined interfaces from the pfSense configuration and add them to the $Interfaces collection.  
         $InputObject | 
             ConvertTo-PFObject -PFObjectType "PFInterface" |
                 ForEach-Object { $Interfaces.Add($_) | Out-Null }
