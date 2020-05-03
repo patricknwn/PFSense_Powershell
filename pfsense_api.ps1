@@ -92,6 +92,11 @@ function ConvertTo-PFObject{
     } 
 
     process { 
+        # make double sure the PFServer $inputObject has the configuration stored inside. It most likely already has the configuration,
+        # which makes it scenario 2 for Get-PFConfiguration and it will return the $InputObject unaltered.
+        $InputObject = $InputObject | Get-PFConfiguration
+
+        
         $ObjectToParse = $InputObject.PSConfig
         foreach($XMLPFObj in ($Object::section).Split("/")){
             $ObjectToParse = $ObjectToParse.$XMLPFObj
@@ -285,8 +290,8 @@ function Get-PFConfiguration {
         Switch to indicate that any saved configuration MUST be refreshed by querying the pfSense server
 
     #>
-    [OutputType('PFServer')] 
     [CmdletBinding()]
+    [OutputType('PFServer')] 
     param (
         [Parameter(Mandatory=$true, ValueFromPipeline=$true)]
             [Alias('Server')]
@@ -321,9 +326,12 @@ function Get-PFConfiguration {
 function Get-PFInterface {
     <#
     .SYNOPSIS 
-        Get a PFInterface object for all interfaces that are available in the pfSense
+        Get a PFInterface object for each of the interfaces that are available in the pfSense
 
     .DESCRIPTION
+        Get-PFInterface is one of the more extensive Get-PF* functions, since there are a couple of special things that need to happen
+        First, it gets the interfaces as defined in the pfSense configuration. So far, that's very standard behavior.
+        Secondly, it adds some interfaces that are not explicitly defined but nonetheless exist in the pfSense server, e.g. lo0 (local loopback)
 
     .PARAMETER Server
         Alias for InputObject, accepts the pipeline input. This should be a PFServer object.
@@ -332,6 +340,7 @@ function Get-PFInterface {
         Optional parameter to filter by interface name. 
     #>
     [CmdletBinding()]
+    [OutputType([PFInterface[]])]
     param (
         [Parameter(Mandatory=$true, ValueFromPipeline=$true)][Alias('Server')][PFServer]$InputObject,
         [Parameter(Mandatory=$false)][string]$Name
@@ -344,12 +353,11 @@ function Get-PFInterface {
         $Interfaces = New-Object System.Collections.ArrayList
 
         # Retrieve the explicitly defined interfaces from the pfSense configuration and add them to the $Interfaces collection.  
-        $InputObject | 
-            ConvertTo-PFObject -PFObjectType "PFInterface" |
-                ForEach-Object { $Interfaces.Add($_) | Out-Null }
+        $InterfacesFromConfig = $InputObject |  ConvertTo-PFObject -PFObjectType "PFInterface"
+        $InterfacesFromConfig | ForEach-Object { $Interfaces.Add($_) | Out-Null }
         
         # add the IPv6 LinkLocal name and description so these can be translated
-        $InterfacesFromConfig | ForEach-Object {
+        $InterfacesFromConfig.GetEnumerator() | ForEach-Object {
             $Properties = @{
                 Name = "_lloc{0}" -f $_.Name
                 Description = "{0}IpV6LinkLocal" -f (($_.Description) ? $_.Description : $_.Name)
@@ -387,8 +395,7 @@ function Get-PFAlias {
     [CmdletBinding()]
     param ([Parameter(Mandatory=$true, ValueFromPipeline=$true)][Alias('Server')][PFServer]$InputObject)
     process {
-        ConvertTo-PFObject -InputObject $InputObject -PFObjectType "PFAlias" | out-null
-        return $InputObject | out-null
+        $InputObject | ConvertTo-PFObject -PFObjectType "PFAlias"
     }
 }
 
@@ -732,20 +739,25 @@ try{
 # Get- all config information so that we can see what's inside
 $PFServer = ($PFServer | Get-PFConfiguration -NoCache)
 
-# We will have frequent reference to the [PFInterface] objects, to make them readily available
-$PFServer | Get-PFInterface | Format-Table *
-$PFServer | Get-PFInterface -Name "lan" | Format-Table *
-
-exit
-
 # test objects
 # make a clear visual distinction between this run and the previous run
 #<#
 1..30 | ForEach-Object { Write-Host "" }
 
+# works
+Write-Host "Known interfaces:" -NoNewline -BackgroundColor Gray -ForegroundColor DarkGray
+$PFServer | Get-PFInterface | Format-table *
+
+Write-Host "LAN interface:" -NoNewline -BackgroundColor Gray -ForegroundColor DarkGray
+$PFServer | Get-PFInterface -Name "lan" | Format-table *
+
+
+# works
+# TODO: separate each address/detail in a separate child object, like PFAliasEntry or something like that. Each PFAlias should then contain a collection of these.
 Write-Host "Registered aliases:" -NoNewline -BackgroundColor Gray -ForegroundColor DarkGray
 $PFServer | Get-PFAlias | Format-table *
 
+exit 
 Write-Host "Registered DHCPd servers" -NoNewline -BackgroundColor Gray -ForegroundColor DarkGray
 $PFServer | Get-PFdhcpd | Format-table *
 
