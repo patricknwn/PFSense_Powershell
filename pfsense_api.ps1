@@ -402,6 +402,33 @@ function GetPFNATRule {
     }
 
 }
+
+function PrintPFNATRule {
+    [CmdletBinding()]
+    param ([Parameter(Mandatory=$true, ValueFromPipeline=$true)][Alias('Server')][PFServer]$InputObject)
+    process {
+            foreach($Rule in $InputObject.WorkingObject){
+                ("Source","Destination") | foreach {
+                    $Rule.$($_+"Port") = ($Rule.$_.Port) ? $Rule.$_.Port.InnerText : "any"
+
+                    if($Rule.$_.Contains("any")){
+                        $Rule.$($_+"address") = "any"
+
+                    } elseif($Rule.$_.Contains("address")) {
+                        $Rule.$($_+"address") = $Rule.$_.address.InnerText
+
+                    } elseif($Rule.$_.Contains("network")){
+                    if($($Rule.$_.network.InnerText).endswith("ip")){
+                        $Rule.$($_+"address") = ("{0} address" -f $Rule.$_.network.InnerText.split("ip")[0])
+                    }
+                        else{$Rule.$($_+"address") = ("{0} network" -f $Rule.$_.network.InnerText)}
+                    }
+                }
+            }
+        return $InputObject | out-null
+    }
+}
+
 function GetPFStaticRoute {
     [CmdletBinding()]
     param ([Parameter(Mandatory=$true, ValueFromPipeline=$true)][Alias('Server')][psobject]$InputObject)
@@ -688,7 +715,7 @@ $StaticInterface.keys | %{
 # test objects
 # make a clear visual distinction between this run and the previous run
 <#
-1..30 | ForEach-Object { Write-Host "" }
+1..30 | ForEach-Object { Write-Host "" } 
 
 Write-Host "Registered aliases:" -NoNewline -BackgroundColor Gray -ForegroundColor DarkGray
 $PFServer | GetPFAlias | Format-table *
@@ -754,7 +781,7 @@ $Flow = @{
     }   
 
     "portfwd" = @{
-        "print" = "param(`$InputObject); `$InputObject | GetPFNATRule; `$InputObject.WorkingObject | Format-table *"
+        "print" = "param(`$InputObject); `$InputObject | GetPFNATRule; `$InputObject | PrintPFNatRule; `$InputObject.WorkingObject | Select-Object -ExcludeProperty Source, Destination | Format-table *"
     }    
     "Firewall" = @{
         "print" = "param(`$InputObject); `$InputObject | GetPFFirewallRule; `$InputObject | PrintPFFirewallRule; `$InputObject.WorkingObject | Select-Object -ExcludeProperty Source, Destination | Format-table *" 
@@ -768,7 +795,7 @@ $Flow = @{
 
 }
 
-# execute requested flow
+# execute requested flow  
 try{
     if(-not $Flow.ContainsKey($Service)){  Write-Host "Unknown service '$Service'" -ForegroundColor red; exit 2 }
     if(-not $Flow.$Service.ContainsKey($Action)){ Write-Host "Unknown action '$Action' for service '$Service'" -ForegroundColor red; exit 3 }

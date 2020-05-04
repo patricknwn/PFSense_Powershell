@@ -11,12 +11,7 @@ dhcpStaticMap:
 -All 
 
 Firewall:
-- SourceType
-- SourceAddress
-- SourcePort
-- DestinationType
-- DestinationAddress
-- DestinationPort
+- ALL
 
 gateway:
 -All
@@ -34,5 +29,5 @@ dnsResolverHost:
 Works
 
 portfwd:
-SourceAddress only works for network we need a way to try address any our network
+-All
 
