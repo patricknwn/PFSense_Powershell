@@ -83,7 +83,7 @@ class PFFirewallRule {
     [ValidateSet('inet', 'inet6', 'inet46')]
         [string]$IPProtocol
 #    [PFInterface[]]$interface
-    [string[]]$interface
+    [PFInterface[]]$interface
     [ValidateSet('tcp', 'udp', 'tcp/udp', 'icmp', 'esp', 'ah', 'gre', 'ipv6', 
                  'igmp', 'pim', 'ospf', 'tp', 'carp', 'pfsync', '')]
         [string]$Protocol
@@ -128,7 +128,7 @@ class PFFirewallSeparator {
 
 class PFGateway {
 #    [PFInterface[]]$interface
-    [string]$Interface
+    [PFInterface]$Interface
     [string]$Gateway
     [string]$Monitor
     [string]$Name

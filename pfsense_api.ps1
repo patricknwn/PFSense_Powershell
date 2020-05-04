@@ -112,6 +112,8 @@ function ConvertTo-PFObject{
                     $Property = $_.Name
                     $XMLProperty = ($PropertyMapping.$Property) ? $PropertyMapping.$Property : $Property.ToLower()
                     $PropertyValue = $ObjectToParse[$index]
+                    $PropertyTypedValue = $null
+
                     foreach($XMLProp in $XMLProperty.Split("/")){                    
                         $PropertyValue = $PropertyValue.$XMLProp
                     }
@@ -151,8 +153,15 @@ function ConvertTo-PFObject{
                                 }
                             }
                         }
+                    
+                    # obviously it should work for non-collections too. This screams for some refactoring, btw!
+                    } elseif($PropertyValue){
+                        switch($PropertyType){
+                            "PFInterface" { $PropertyValue = $InputObject | Get-PFInterface -Name $PropertyValue } 
+                        }
                     }
-                    $Properties.$Property = $PropertyValue
+
+                    $Properties.$Property = ($PropertyTypedValue) ? $PropertyTypedValue : $PropertyValue
                 }
                 $Object = New-Object -TypeName $PFObjectType -Property $Properties
                 $Collection.Add($Object) | Out-Null
@@ -168,7 +177,8 @@ function ConvertTo-PFObject{
                 $Object | Get-Member -MemberType properties | Select-Object -Property Name | ForEach-Object {
                     $Property = $_.Name
                     $XMLProperty = ($PropertyMapping.$Property) ? $PropertyMapping.$Property : $Property.ToLower()
-                    $PropertyValue = $null
+                    $PropertyValue = $PropertyTypedValue = $null
+
                     if($XMLProperty -eq $key){
                         $PropertyValue = $ObjectToParse
                     }
@@ -226,7 +236,7 @@ function ConvertTo-PFObject{
                     If($PropertyValue -and ($PropertyValue.GetType() -eq [System.Xml.XmlElement])){
                         $PropertyValue = $PropertyValue.InnerText
                     }
-                    $Properties.$Property = $PropertyValue
+                    $Properties.$Property = ($PropertyTypedValue) ? $PropertyTypedValue : $PropertyValue
                     
                 }
             $Object = New-Object -TypeName $PFObjectType -Property $Properties
@@ -417,8 +427,7 @@ function Get-PFdhcpStaticMap {
     [CmdletBinding()]
     param ([Parameter(Mandatory=$true, ValueFromPipeline=$true)][Alias('Server')][PFServer]$InputObject)
     process {
-        ConvertTo-PFObject -InputObject $InputObject -PFObjectType "PFdhcpStaticMap" | out-null
-        return $InputObject | out-null
+        $InputObject | ConvertTo-PFObject -PFObjectType "PFDHCPStaticMap"
     }
 }
 function PrintPFdhcpStaticMap {
@@ -454,8 +463,7 @@ function Get-PFFirewallRule {
     [CmdletBinding()]
     param ([Parameter(Mandatory=$true, ValueFromPipeline=$true)][Alias('Server')][PFServer]$InputObject)
     process {
-        ConvertTo-PFObject -InputObject $InputObject -PFObjectType "PFfirewallRule" | out-null
-        return $InputObject | out-null
+        $InputObject | ConvertTo-PFObject -PFObjectType "PFfirewallRule"
     }
 }
 function PrintPFFirewallRule {
@@ -488,16 +496,14 @@ function Get-PFGateway {
     [CmdletBinding()]
     param ([Parameter(Mandatory=$true, ValueFromPipeline=$true)][Alias('Server')][PFServer]$InputObject)
     process {
-        ConvertTo-PFObject -InputObject $InputObject -PFObjectType "PFGateway" | out-null
-        return $InputObject | out-null
+        $InputObject | ConvertTo-PFObject -PFObjectType "PFGateway"
     }
 }
 function Get-PFNATRule {
     [CmdletBinding()]
     param ([Parameter(Mandatory=$true, ValueFromPipeline=$true)][Alias('Server')][PFServer]$InputObject)
     process {
-        ConvertTo-PFObject -InputObject $InputObject -PFObjectType "PFnatRule" | out-null
-        return $InputObject | out-null
+        $InputObject | ConvertTo-PFObject -PFObjectType "PFnatRule"
     }
 
 }
@@ -505,8 +511,7 @@ function Get-PFStaticRoute {
     [CmdletBinding()]
     param ([Parameter(Mandatory=$true, ValueFromPipeline=$true)][Alias('Server')][psobject]$InputObject)
     process {
-        ConvertTo-PFObject -InputObject $InputObject -PFObjectType "PFStaticRoute" | out-null
-        return $InputObject | out-null
+        $InputObject | ConvertTo-PFObject -PFObjectType  "PFStaticRoute"
     }
 }
 
@@ -514,8 +519,7 @@ function Get-PFUnbound {
     [CmdletBinding()]
     param ([Parameter(Mandatory=$true, ValueFromPipeline=$true)][Alias('Server')][psobject]$InputObject)
     process {
-        ConvertTo-PFObject -InputObject $InputObject -PFObjectType "PFUnbound" | out-null
-        return $InputObject | out-null
+        $InputObject | ConvertTo-PFObject -PFObjectType  "PFUnbound"
     }
 } 
 
@@ -542,7 +546,7 @@ function Get-PFunboundHost {
     [CmdletBinding()]
     param ([Parameter(Mandatory=$true, ValueFromPipeline=$true)][Alias('Server')][psobject]$InputObject)
     process { 
-        ConvertTo-PFObject -InputObject $InputObject -PFObjectType "PFunboundHost"
+        $InputObject | ConvertTo-PFObject -PFObjectType "PFunboundHost"
     }
 }
 
@@ -770,31 +774,38 @@ $DHCPdInterfaceType = ($DHCPdServers | Select-Object -First 1 -ExpandProperty In
 $DHCPdInterfaceIsPFInterface = $DHCPdInterfaceType -eq [PFInterface]
 Write-Host ("Typecheck of Interface property of DHCPd server 1: {0}" -f $DHCPdInterfaceType) -ForegroundColor ($DHCPdInterfaceIsPFInterface ? "Green" : "Red")
 
-exit 
+# TODO: a lot
 Write-Host "Registered static DHCP leases" -NoNewline -BackgroundColor Gray -ForegroundColor DarkGray
 $PFServer | Get-PFDHCPStaticMap | Format-table *
 
+
+# TODO: source/destination
 Write-Host "All firewall rules" -NoNewline -BackgroundColor Gray -ForegroundColor DarkGray
 # TODO: if you want to convert System.Collections.Hashtable into something more meaningful (display only), do it here
 #       obviously creating a Write-PFFirewallRule function would be an even better idea :)
 #       DO NOT change it in the ConvertTo-PFObject function, since that will really complicate the reverse operation (changing and uploading the rule)
 $PFServer | Get-PFFirewallRule | Select-Object -ExcludeProperty Source, Destination | Format-table *
 
+# works
 Write-Host "Registered gateways" -NoNewline -BackgroundColor Gray -ForegroundColor DarkGray
 $PFServer | Get-PFGateway | Format-table *
 
 Write-Host "Available interfaces" -NoNewline -BackgroundColor Gray -ForegroundColor DarkGray
 $PFServer | Get-PFInterface | Format-table *
 
+# TODO: a lot
 Write-Host "All NAT rules" -NoNewline -BackgroundColor Gray -ForegroundColor DarkGray
 $PFServer | Get-PFNATRule | Format-table *
 
+# TODO: mapping to PFGateway object
 Write-Host "All static routes" -NoNewline -BackgroundColor Gray -ForegroundColor DarkGray
 $PFServer | Get-PFStaticRoute | Format-table *
 
+# TODO: mapping to PSObject 
 Write-Host "DNS server settings" -NoNewline -BackgroundColor Gray -ForegroundColor DarkGray
 $PFServer | Get-PFUnbound | Format-table *
 
+# TODO: mapping to PSObject
 Write-Host "DNS host overrides" -NoNewline -BackgroundColor Gray -ForegroundColor DarkGray
 $PFServer | Get-PFunboundHost | Format-table *
 
