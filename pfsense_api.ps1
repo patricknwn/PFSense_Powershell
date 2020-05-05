@@ -85,8 +85,15 @@ function ConvertTo-PFObject{
     )
 
     begin{
-        $Object = (New-Object -TypeName $PFObjectType)
+        $Object = (New-Object -TypeName $PFObjectType)        
         $PropertyMapping = $Object::PropertyMapping
+
+        # to make the names a bit clearer, use PFType, PFTypeProperties and PFTypePropertyMapping
+        # this because in the parsing, it otherwise gets confusing since there are a lot of variables refering to some $object... thing
+        $PFType = (New-Object -TypeName $PFObjectType)
+        $PFTypeProperties = $PFType | Get-Member -MemberType properties | Select-Object -Property Name
+        $PFTypePropertyMapping = $PFType::PropertyMapping
+
         $Collection = New-Object System.Collections.ArrayList
         $Properties = @{}
     } 
@@ -104,8 +111,35 @@ function ConvertTo-PFObject{
         $PropertyValue = $null
         $index = 0 
 
+        # $ObjectToParse can be one of two types: a hashtable or an array. They require a slightly different approach of iteration.
         # This IF statement is to see if the $ObjectToParse is a array of object (this happens with the interface), if it is a array, we need to loop to each item to Get- it's value's
-        if ($ObjectToParse[$Index]){
+        $ObjectsInHashtable = $ObjectToParse.GetType() -eq [hashtable]
+        $ObjectsInArray = ($ObjectToParse.GetType()).BaseType -eq [Array]
+
+        # To enable a single and structured approach, we need to make the hashtable key (often the Name property, but not always) 
+        # available in the value (value always is a hashtable). This makes sure we can use one iterable function to iterate over all objects. 
+        # The idea is that one entry in the array/hashtable equals to one PF* object, so after this, we can loop through the array and do the conversion.
+        # The hashtable key will be made available in the array as "_key"
+        if($ObjectsInHashtable){
+            $ObjectToParse.GetEnumerator() | ForEach-Object {
+                $_.Value["_key"] = $_.Name
+            }
+        }
+
+        # now iterate over all objects and convert them
+        $ObjectToParse.GetEnumerator() | ForEach-Object {
+            # optional, but easier for the refactoring. Makes sure we don't get a lot of unexpected errors in the beginning.
+            if($_.Value.GetType() -ne [hashtable]) { 
+                Write-Debug "Item in iterable is not the hashtable we expected"
+                return # this is how to simulate "continue" in a ForEach-Object block, see http://stackoverflow.com/questions/7760013/ddg#7763698
+            }
+
+
+
+
+        }
+
+        if ($ObjectsInArray){
             write-host "IF"
             while($ObjectToParse[$index]){
                 $Object | Get-Member -MemberType properties | Select-Object -Property Name | ForEach-Object {
@@ -117,7 +151,6 @@ function ConvertTo-PFObject{
                     foreach($XMLProp in $XMLProperty.Split("/")){                    
                         $PropertyValue = $PropertyValue.$XMLProp
                     }
-
                     
                     If($PropertyValue -and ($PropertyValue.GetType() -eq [System.Xml.XmlElement])){
                         $PropertyValue = $PropertyValue.InnerText
@@ -170,7 +203,7 @@ function ConvertTo-PFObject{
         }
 
         # If $ObjectToParse isn't a array we use a slightily different way to Get- it's value's
-        else{
+        elseif($ObjectsInHashtable){
             write-host "Else"
 #            foreach($key in $PFconfig.($Object::section).keys){
             foreach($key in $ObjectToParse.keys){
@@ -242,7 +275,15 @@ function ConvertTo-PFObject{
             $Object = New-Object -TypeName $PFObjectType -Property $Properties
             $Collection.Add($Object) | Out-Null
             }
+        
+        
+        
+        
+        } else {
+            throw [System.ArrayTypeMismatchException]::new('Unexpected type for the iterable, expecting a hashtable or an array.')
         }
+
+
         
         # return the collection with PF* objects
         return $Collection
