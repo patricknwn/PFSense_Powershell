@@ -164,6 +164,7 @@ class PFInterface {
     static [string]$Section = "interfaces"
     # property name as it appears in the XML, insofar it's different from the object's property name
     static $PropertyMapping = @{
+        Name = "_key"
         Interface = "if"
         Description = "descr"
         IPv4Address = "ipaddr"

@@ -91,25 +91,21 @@ function ConvertTo-PFObject{
         # to make the names a bit clearer, use PFType, PFTypeProperties and PFTypePropertyMapping
         # this because in the parsing, it otherwise gets confusing since there are a lot of variables refering to some $object... thing
         $PFType = (New-Object -TypeName $PFObjectType)
-        $PFTypeProperties = $PFType | Get-Member -MemberType properties | Select-Object -Property Name
+        $PFTypeProperties = ($PFType | Get-Member -MemberType properties).Name
         $PFTypePropertyMapping = $PFType::PropertyMapping
 
-        $Collection = New-Object System.Collections.ArrayList
-        $Properties = @{}
+        $Collection = New-Object System.Collections.ArrayList        
     } 
 
     process { 
         # make double sure the PFServer $inputObject has the configuration stored inside. It most likely already has the configuration,
         # which makes it scenario 2 for Get-PFConfiguration and it will return the $InputObject unaltered.
         $InputObject = $InputObject | Get-PFConfiguration
-
         
         $ObjectToParse = $InputObject.PSConfig
         foreach($XMLPFObj in ($Object::section).Split("/")){
             $ObjectToParse = $ObjectToParse.$XMLPFObj
         } 
-        $PropertyValue = $null
-        $index = 0 
 
         # $ObjectToParse can be one of two types: a hashtable or an array. They require a slightly different approach of iteration.
         # This IF statement is to see if the $ObjectToParse is a array of object (this happens with the interface), if it is a array, we need to loop to each item to Get- it's value's
@@ -122,7 +118,7 @@ function ConvertTo-PFObject{
         # The hashtable key will be made available in the array as "_key"
         if($ObjectsInHashtable){
             $ObjectToParse.GetEnumerator() | ForEach-Object {
-                $_.Value["_key"] = $_.Name
+                $_.Value.Add("_key", $_.Key)
             }
         }
 
@@ -134,11 +130,98 @@ function ConvertTo-PFObject{
                 return # this is how to simulate "continue" in a ForEach-Object block, see http://stackoverflow.com/questions/7760013/ddg#7763698
             }
 
+            # the last step of the process will be to create a new object. We need a container with the property values for the PF* object
+            # so that we can splat them into the New-Object cmdlet later
+            $PFObjectProperties = @{} 
 
+            # iterate over all properties that are defined in the PF* object. 
+            # find the property value based on the property mapping (if that exists) or assume the property name in $ObjectToParse is the 
+            # same as in the PF* object if no mapping is defined, i.e. $PFTypeProperty
+            foreach($PFTypeProperty in $PFTypeProperties){
+                # set the default property value: null. We have:
+                # - $PropertyValue: the uncasted property value
+                # - $PropertyTypedValue: $PropertyValue casted to another PF* object, like PFInterface or PFGateway
+                $PropertyValue = $PropertyTypedValue = $PropertyTypedValues = $null
 
+                # do the mapping from PFTypeProperty to $ObjectToParse property. Retain the XML in the name to indicate clearly it refers
+                # to the property name as returned by the XML-RPC request. 
+                # if no mapping exists, assume the propertyname in the $ObjectToParse is the same as in the PF* object
+                $XMLProperty = ($PFTypePropertyMapping.$PFTypeProperty) ? $PFTypePropertyMapping.$PFTypeProperty : $PFTypeProperty.ToLower()
 
+                # assign the uncasted property value. If there is a / in the property name, it means that it should be iterated one level deeper.
+                # unlimited deep nesting levels are supported.
+                # TODO: add some error handling/checking to prevent errors here if the $PropertyValue is $null or doesn't have a property $XMLProperty
+                $PropertyValue = $_.Value.$XMLProperty
+
+                # foreach($XMLProperty in $XMLProperty.Split("/")){                    
+                #     $PropertyValue = $PropertyValue.$XMLProperty
+                # }
+
+                # since the $ObjectToParse is the parsed XML-RPC message, all the values are (supposed to) XMLElements.
+                # we need to replace the XMLElement by its (string) actual value
+                if($PropertyValue -and ($PropertyValue.GetType() -eq [System.Xml.XmlElement])){
+                    $PropertyValue = $PropertyValue.InnerText
+
+                # it can happen that the property itself contains an array of values. 
+                # TODO: this is okay for this refactoring phase, but needs to be refactored in one logic (with the if-part)
+                } elseif($PropertyValue -and (($PropertyValue.GetType()).BaseType -eq [array])){
+                    $PropertyArray = New-Object System.Collections.ArrayList
+                    foreach($Value in $PropertyValue){
+                        # TODO: refactor and/or add error detection. What if $Value is no System.Xml.XmlElement??
+                        $PropertyArray.add($Value.Innertext) | Out-Null
+                    }
+                    $PropertyValue = $PropertyArray
+                }
+                
+                # if the $PropertyValue equals $null, we do not have to process anything. It doesn't need to be added to the 
+                # $PFObjectProperties hashtable, since $null is the implicit default value. no need to make that explicit.
+                if([string]::IsNullOrEmpty($PropertyValue)){ continue }
+
+                # next step is to cast the $PropertyValue to the required type as specified in the PF* object
+                # if we omit this step, we will get an exception when trying to instantiate the object
+                # to enable that, let's gather the property definition to see where to cast to
+                $PropertyDefinition = ($PFType | Get-Member -MemberType Properties | Where-Object { $_.Name -eq $PFTypeProperty }).Definition
+                $PropertyType = ($PropertyDefinition.Split(" ") | Select-Object -First 1).Replace("[]", "")
+                $PropertyIsCollection = $PropertyDefinition.Contains("[]")
+
+                # to ease the workflow, we will make sure that $PropertyValue is an array. then we convert each item in the array.
+                # the last step is to unwrap the array (fetching the last item) if $PropertyIsCollection is false. 
+                # TODO: in a next phase of the refactoring, combine this logic with the logic from the section in line 160-175
+                #       to make sure the explicit conversion to array is done there already
+                if(($PropertyValue.GetType()).BaseType -ne [array]){ $PropertyValue = @($PropertyValue) }
+
+                # TODO: the splitting of items by ||, space or comma
+                $PropertyTypedValues = New-Object System.Collections.ArrayList
+                foreach($Item in $PropertyValue){
+                    switch($PropertyType){
+                        "PFInterface" { 
+                            $PropertyTypedValue = $InputObject | Get-PFInterface -Name $Item
+                        } 
+
+                        default {
+                            $PropertyTypedValue = $Item
+                        }
+                    }
+
+                    $PropertyTypedValues.Add($PropertyTypedValue) | Out-Null
+                }
+
+                # at this point, the:
+                #   - $PropertyTypedValues contains an array with all the $PropertyTypedValue items
+                #   - $PropertyTypedValue contains the casted version of the last $Item
+                #
+                # if $PropertyIsCollection we will add the array to the $PFObjectProperties hashtable
+                # if the value should be singular (e.g. $PropertyIsCollection is false), we will add the $PropertyTypedValue
+                # this behavior mimics that the last item overwrites earlier items (if any). 
+                $PFObjectProperties.$PFTypeProperty = ($PropertyIsCollection) ? $PropertyTypedValues : $PropertyTypedValue
+            } # end loop through all PFTypeProperties
+
+            # create the instance of PFType and add it to the collection
+            $PFTypeInstance = New-Object -TypeName $PFObjectType -Property $PFObjectProperties
+            $Collection.Add($PFTypeInstance) | Out-Null
         }
 
+        <#
         if ($ObjectsInArray){
             write-host "IF"
             while($ObjectToParse[$index]){
@@ -282,7 +365,7 @@ function ConvertTo-PFObject{
         } else {
             throw [System.ArrayTypeMismatchException]::new('Unexpected type for the iterable, expecting a hashtable or an array.')
         }
-
+        #>
 
         
         # return the collection with PF* objects
@@ -801,7 +884,7 @@ $PFServer | Get-PFInterface | Format-table *
 # works
 Write-Host "LAN interface:" -NoNewline -BackgroundColor Gray -ForegroundColor DarkGray
 $PFServer | Get-PFInterface -Name "lan" | Format-table *
-
+exit 
 # works
 # TODO: separate each address/detail in a separate child object, like PFAliasEntry or something like that. Each PFAlias should then contain a collection of these.
 Write-Host "Registered aliases:" -NoNewline -BackgroundColor Gray -ForegroundColor DarkGray
