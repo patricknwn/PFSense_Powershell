@@ -443,6 +443,9 @@ function PrintPFFirewallRule {
     [CmdletBinding()]
     param ([Parameter(Mandatory=$true, ValueFromPipeline=$true)][Alias('Server')][PFServer]$InputObject)
     process {
+    # TODO: this applies to all Firewall objects, so I'd suggest to move it to Get-PFFirewallRule
+    #       alternatively, you can make this a Write-PFFirewallRule cmdlet that also does the Write-Host part (e.g. no Format-Table on the output, but instead in this function)
+    #       the Get-PF* functions should still (just) return the PF* objects!
             foreach($Rule in $InputObject.WorkingObject){
                 ("Source","Destination") | foreach {
                     $Rule.$($_+"Port") = ($Rule.$_.Port) ? $Rule.$_.Port.InnerText : "any"
@@ -721,7 +724,7 @@ try{
 # Get- all config information so that we can see what's inside
 $PFServer = ($PFServer | Get-PFConfiguration -NoCache)
 
-# test objects
+<# test objects
 # make a clear visual distinction between this run and the previous run
 #<#
 1..30 | ForEach-Object { Write-Host "" }
@@ -750,7 +753,6 @@ Write-Host ("Typecheck of Interface property of DHCPd server 1: {0}" -f $DHCPdIn
 # TODO: a lot
 Write-Host "Registered static DHCP leases" -NoNewline -BackgroundColor Gray -ForegroundColor DarkGray
 $PFServer | Get-PFDHCPStaticMap | Format-table *
-
 
 # TODO: source/destination
 Write-Host "All firewall rules" -NoNewline -BackgroundColor Gray -ForegroundColor DarkGray
@@ -783,43 +785,43 @@ Write-Host "THE END" -BackgroundColor Gray -ForegroundColor DarkGray
 exit;
 #>
 
-<# define the possible execution flows
+<# define the possible execution flows #>
 $Flow = @{
     "alias" = @{
-        "print" = "param(`$InputObject); `$InputObject | Get-PFAlias; `$InputObject.WorkingObject | Format-Table *"#the star makes the format table show more than 10 column's
+        "print" = "param(`$InputObject); `$InputObject | Get-PFAlias | Format-Table *"#the star makes the format table show more than 10 column's
     }
 
     "gateway" = @{
-        "print" = "param(`$InputObject); `$InputObject | Get-PFGateway; `$InputObject.WorkingObject | Format-Table *"
+        "print" = "param(`$InputObject); `$InputObject | Get-PFGateway | Format-Table *"
     }
 
     "interface" = @{
-        "print" = "param(`$InputObject); `$InputObject | Get-PFInterface; `$InputObject.WorkingObject | Format-Table *"
+        "print" = "param(`$InputObject); `$InputObject | Get-PFInterface | Format-Table *"
     }
 
     "StaticRoute" = @{
-        "print" = "param(`$InputObject); `$InputObject | Get-PFStaticRoute; `$InputObject.WorkingObject | Format-table *"
+        "print" = "param(`$InputObject); `$InputObject | Get-PFStaticRoute | Format-table *"
     }
 
     "dnsResolver" = @{
-        "print" = "param(`$InputObject); `$InputObject | Get-PFUnbound; `$InputObject | PrintPFUnbound; `$InputObject.WorkingObject | Format-table *"
+        "print" = "param(`$InputObject); `$InputObject | Get-PFUnbound; `$InputObject | PrintPFUnbound | Format-table *"
     }    
 
     "dnsResolverHost" = @{
-        "print" = "param(`$InputObject); `$InputObject | Get-PFunboundHost; `$InputObject.WorkingObject | Format-table *"
+        "print" = "param(`$InputObject); `$InputObject | Get-PFunboundHost | Format-table *"
     }   
 
     "portfwd" = @{
-        "print" = "param(`$InputObject); `$InputObject | Get-PFNATRule; `$InputObject.WorkingObject | Format-table *"
+        "print" = "param(`$InputObject); `$InputObject | Get-PFNATRule | Format-table *"
     }    
     "Firewall" = @{
-        "print" = "param(`$InputObject); `$InputObject | Get-PFFirewallRule; `$InputObject | PrintPFFirewallRule; `$InputObject.WorkingObject | Select-Object -ExcludeProperty Source, Destination | Format-table *" 
+        "print" = "param(`$InputObject); `$InputObject | Get-PFFirewallRule | PrintPFFirewallRule | Select-Object -ExcludeProperty Source, Destination | Format-table *" 
     } 
     "dhcpd" = @{
-        "print" = "param(`$InputObject); `$InputObject | Get-PFDHCPd; `$InputObject.WorkingObject | Format-table *" 
+        "print" = "param(`$InputObject); `$InputObject | Get-PFDHCPd | Format-table *" 
     } 
     "dhcpStaticMap" = @{
-        "print" = "param(`$InputObject); `$InputObject | Get-PFdhcpStaticMap; `$InputObject | PrintPFdhcpStaticMap; `$InputObject.WorkingObject | Format-table * -autosize" 
+        "print" = "param(`$InputObject); `$InputObject | Get-PFdhcpStaticMap; `$InputObject | PrintPFdhcpStaticMap | Format-table * -autosize" 
     } 
 
 }
