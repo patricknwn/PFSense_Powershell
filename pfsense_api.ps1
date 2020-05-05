@@ -85,15 +85,13 @@ function ConvertTo-PFObject{
     )
 
     begin{
-        $Object = (New-Object -TypeName $PFObjectType)        
-        $PropertyMapping = $Object::PropertyMapping
-
         # to make the names a bit clearer, use PFType, PFTypeProperties and PFTypePropertyMapping
         # this because in the parsing, it otherwise gets confusing since there are a lot of variables refering to some $object... thing
         $PFType = (New-Object -TypeName $PFObjectType)
         $PFTypeProperties = ($PFType | Get-Member -MemberType properties).Name
         $PFTypePropertyMapping = $PFType::PropertyMapping
 
+        # container for the resulting PF* objects
         $Collection = New-Object System.Collections.ArrayList        
     } 
 
@@ -103,20 +101,16 @@ function ConvertTo-PFObject{
         $InputObject = $InputObject | Get-PFConfiguration
         
         $ObjectToParse = $InputObject.PSConfig
-        foreach($XMLPFObj in ($Object::section).Split("/")){
+        foreach($XMLPFObj in ($PFType::section).Split("/")){
             $ObjectToParse = $ObjectToParse.$XMLPFObj
         }
         if(-not $ObjectToParse){ return }
-
-        # $ObjectToParse can be one of two types: a hashtable or an array. They require a slightly different approach of iteration.
-        # This IF statement is to see if the $ObjectToParse is a array of object (this happens with the interface), if it is a array, we need to loop to each item to Get- it's value's
-        $ObjectsInHashtable =$ObjectToParse.GetType() -eq [hashtable]
 
         # To enable a single and structured approach, we need to make the hashtable key (often the Name property, but not always) 
         # available in the value (value always is a hashtable). This makes sure we can use one iterable function to iterate over all objects. 
         # The idea is that one entry in the array/hashtable equals to one PF* object, so after this, we can loop through the array and do the conversion.
         # The hashtable key will be made available in the array as "_key"
-        if($ObjectsInHashtable){
+        if($ObjectToParse.GetType() -eq [hashtable]){
             $ObjectToParse.GetEnumerator() | ForEach-Object {
                 if($_.Value."_key"){ return } # this is how to simulate "continue" in a ForEach-Object block, see http://stackoverflow.com/questions/7760013/ddg#7763698
                 if($_.Value.PSObject.Methods.Name -notcontains "Add" ){ return }
@@ -222,153 +216,6 @@ function ConvertTo-PFObject{
             $PFTypeInstance = New-Object -TypeName $PFObjectType -Property $PFObjectProperties
             $Collection.Add($PFTypeInstance) | Out-Null
         }
-
-        <#
-        if ($ObjectsInArray){
-            write-host "IF"
-            while($ObjectToParse[$index]){
-                $Object | Get-Member -MemberType properties | Select-Object -Property Name | ForEach-Object {
-                    $Property = $_.Name
-                    $XMLProperty = ($PropertyMapping.$Property) ? $PropertyMapping.$Property : $Property.ToLower()
-                    $PropertyValue = $ObjectToParse[$index]
-                    $PropertyTypedValue = $null
-
-                    foreach($XMLProp in $XMLProperty.Split("/")){                    
-                        $PropertyValue = $PropertyValue.$XMLProp
-                    }
-                    
-                    If($PropertyValue -and ($PropertyValue.GetType() -eq [System.Xml.XmlElement])){
-                        $PropertyValue = $PropertyValue.InnerText
-                    }
-                    # The else if is for when a propertyvalue is a array of strings
-                    elseif($PropertyValue -and ($PropertyValue.GetType() -eq [System.Object[]])){
-                        $PropertyArray = New-Object System.Collections.ArrayList
-                        foreach($value in $PropertyValue){
-                            $PropertyArray.add($value.Innertext) | out-null
-                        }
-                        $PropertyValue = $PropertyArray
-                    }
-
-                    # if($PropertyValue.string){$PropertyValue = $PropertyValue.string}
-                    
-                    $PropertyDefinition = ($Object | Get-Member -MemberType Properties | Where-Object { $_.Name -eq $Property }).Definition
-                    $PropertyType = ($PropertyDefinition.Split(" ") | Select-Object -First 1).Replace("[]", "")
-                    $PropertyIsCollection = $PropertyDefinition.Contains("[]")
- 
-                    # TODO: make the typed conversion work with non-collections too :)
-                    if($PropertyIsCollection -and $PropertyValue){
-                        if($Property -eq "Detail"){$PropertyValue = $PropertyValue.Split("||")}
-                        elseif($Property -eq "Address"){$PropertyValue = $PropertyValue.Split(" ")}
-                        else{$PropertyValue = $PropertyValue.Split(",")}
-                    
-                        $PropertyTypedValue = New-Object System.Collections.ArrayList
-                        ForEach($Item in $PropertyValue){
-                            switch($PropertyType){
-                                "PFInterface" {
-                                    $PropertyTypedValue.Add(
-                                        ($InputObject | Get-PFInterface -Name $Item)
-                                    ) | Out-Null
-                                }
-                            }
-                        }
-                    
-                    # obviously it should work for non-collections too. This screams for some refactoring, btw!
-                    } elseif($PropertyValue){
-                        switch($PropertyType){
-                            "PFInterface" { $PropertyValue = $InputObject | Get-PFInterface -Name $PropertyValue } 
-                        }
-                    }
-
-                    $Properties.$Property = ($PropertyTypedValue) ? $PropertyTypedValue : $PropertyValue
-                }
-                $Object = New-Object -TypeName $PFObjectType -Property $Properties
-                $Collection.Add($Object) | Out-Null
-                $index++
-            }
-        }
-
-        # If $ObjectToParse isn't a array we use a slightily different way to Get- it's value's
-        elseif($ObjectsInHashtable){
-            write-host "Else"
-#            foreach($key in $PFconfig.($Object::section).keys){
-            foreach($key in $ObjectToParse.keys){
-                $Object | Get-Member -MemberType properties | Select-Object -Property Name | ForEach-Object {
-                    $Property = $_.Name
-                    $XMLProperty = ($PropertyMapping.$Property) ? $PropertyMapping.$Property : $Property.ToLower()
-                    $PropertyValue = $PropertyTypedValue = $null
-
-                    if($XMLProperty -eq $key){
-                        $PropertyValue = $ObjectToParse
-                    }
-                    else{
-                        $PropertyValue = $ObjectToParse.$key
-                    }
-                    foreach($XMLProp in $XMLProperty.Split("/")){
-                        if($XMLProp -eq 'name'){
-                            $PropertyValue = $key
-                        }
-                        else{
-                            $PropertyValue = $PropertyValue.$XMLProp
-                        }
-                    }
-                    
-                    If($PropertyValue -and ($PropertyValue.GetType() -eq [System.Xml.XmlElement])){
-                        $PropertyValue = $PropertyValue.InnerText
-                    }
-                    elseif($PropertyValue -and ($PropertyValue.GetType() -eq [System.Object[]])){
-                        $PropertyArray = New-Object System.Collections.ArrayList
-                        foreach($value in $PropertyValue){
-                            $PropertyArray.add($value.Innertext) | out-null
-                        }
-                        $PropertyValue = $PropertyArray 
-                    }
-                    
-                    $PropertyDefinition = ($Object | Get-Member -MemberType Properties | Where-Object { $_.Name -eq $Property }).Definition
-                    $PropertyType = ($PropertyDefinition.Split(" ") | Select-Object -First 1).Replace("[]", "")
-                    $PropertyIsCollection = $PropertyDefinition.Contains("[]")
-                    
-                    # TODO: make the typed conversion work with non-collections too :)
-                    if($PropertyIsCollection -and $PropertyValue){
-                        if($Property -eq "Detail"){$PropertyValue = $PropertyValue.Split("||")}
-                        elseif($Property -eq "Address"){$PropertyValue = $PropertyValue.Split(" ")}
-                        else{$PropertyValue = $PropertyValue.Split(",")}
-                    
-                        $PropertyTypedValue = New-Object System.Collections.ArrayList
-                        ForEach($Item in $PropertyValue){
-                            switch($PropertyType){
-                                "PFInterface" {
-                                    $PropertyTypedValue.Add(
-                                        ($InputObject | Get-PFInterface -Name $Item)
-                                    ) | Out-Null
-                                } 
-                            }
-                        }
-
-                    # obviously it should work for non-collections too. This screams for some refactoring, btw!
-                    } elseif($PropertyValue){
-                        switch($PropertyType){
-                            "PFInterface" { $PropertyValue = $InputObject | Get-PFInterface -Name $PropertyValue } 
-                        }
-                    }
-                    
-                    If($PropertyValue -and ($PropertyValue.GetType() -eq [System.Xml.XmlElement])){
-                        $PropertyValue = $PropertyValue.InnerText
-                    }
-                    $Properties.$Property = ($PropertyTypedValue) ? $PropertyTypedValue : $PropertyValue
-                    
-                }
-            $Object = New-Object -TypeName $PFObjectType -Property $Properties
-            $Collection.Add($Object) | Out-Null
-            }
-        
-        
-        
-        
-        } else {
-            throw [System.ArrayTypeMismatchException]::new('Unexpected type for the iterable, expecting a hashtable or an array.')
-        }
-        #>
-
         
         # return the collection with PF* objects
         return $Collection
