@@ -105,12 +105,12 @@ function ConvertTo-PFObject{
         $ObjectToParse = $InputObject.PSConfig
         foreach($XMLPFObj in ($Object::section).Split("/")){
             $ObjectToParse = $ObjectToParse.$XMLPFObj
-        } 
+        }
+        if(-not $ObjectToParse){ return }
 
         # $ObjectToParse can be one of two types: a hashtable or an array. They require a slightly different approach of iteration.
         # This IF statement is to see if the $ObjectToParse is a array of object (this happens with the interface), if it is a array, we need to loop to each item to Get- it's value's
-        $ObjectsInHashtable = $ObjectToParse.GetType() -eq [hashtable]
-        $ObjectsInArray = ($ObjectToParse.GetType()).BaseType -eq [Array]
+        $ObjectsInHashtable =$ObjectToParse.GetType() -eq [hashtable]
 
         # To enable a single and structured approach, we need to make the hashtable key (often the Name property, but not always) 
         # available in the value (value always is a hashtable). This makes sure we can use one iterable function to iterate over all objects. 
@@ -119,6 +119,7 @@ function ConvertTo-PFObject{
         if($ObjectsInHashtable){
             $ObjectToParse.GetEnumerator() | ForEach-Object {
                 if($_.Value."_key"){ return } # this is how to simulate "continue" in a ForEach-Object block, see http://stackoverflow.com/questions/7760013/ddg#7763698
+                if($_.Value.PSObject.Methods.Name -notcontains "Add" ){ return }
 
                 $_.Value.Add("_key", $_.Key)
             }
@@ -137,7 +138,7 @@ function ConvertTo-PFObject{
                 # set the default property value: null. We have:
                 # - $PropertyValue: the uncasted property value
                 # - $PropertyTypedValue: $PropertyValue casted to another PF* object, like PFInterface or PFGateway
-                $PropertyValue = $PropertyTypedValue = $PropertyTypedValues = $null
+                $PropertyValue = $PropertyValues = $PropertyTypedValue = $PropertyTypedValues = $null
 
                 # do the mapping from PFTypeProperty to $ObjectToParse property. Retain the XML in the name to indicate clearly it refers
                 # to the property name as returned by the XML-RPC request. 
@@ -151,34 +152,27 @@ function ConvertTo-PFObject{
                 $XMLPropertyRoot = $XMLPropertyTree | Select-Object -First 1
 
                 # first handle the root. We need to separate this because it's value comes form the array/hashtable $_
-                $PropertyValue = ($_.Value) ? $_.Value.$XMLPropertyRoot : $_.$XMLPropertyRoot
+                $PropertyValues = ($_.Value) ? $_.Value.$XMLPropertyRoot : $_.$XMLPropertyRoot
 
                 # now handle all lower levels (if none exists this step will be effectively skipped)
                 foreach($XMLProperty in ($XMLPropertyTree | Select-Object -Skip 1)){
-                    if(-not ($PropertyValue -and $PropertyValue.$XMLProperty)) { break }
+                    if(-not ($PropertyValues -and $PropertyValues.$XMLProperty)) { break }
 
-                    $PropertyValue = $PropertyValue.$XMLProperty
-                }
-
-                # since the $ObjectToParse is the parsed XML-RPC message, all the values are (supposed to) XMLElements.
-                # we need to replace the XMLElement by its (string) actual value
-                if($PropertyValue -and ($PropertyValue.GetType() -eq [System.Xml.XmlElement])){
-                    $PropertyValue = $PropertyValue.InnerText
-
-                # it can happen that the property itself contains an array of values. 
-                # TODO: this is okay for this refactoring phase, but needs to be refactored in one logic (with the if-part)
-                } elseif($PropertyValue -and (($PropertyValue.GetType()).BaseType -eq [array])){
-                    $PropertyArray = New-Object System.Collections.ArrayList
-                    foreach($Value in $PropertyValue){
-                        # TODO: refactor and/or add error detection. What if $Value is no System.Xml.XmlElement??
-                        $PropertyArray.add($Value.Innertext) | Out-Null
-                    }
-                    $PropertyValue = $PropertyArray
+                    $PropertyValues = $PropertyValues.$XMLProperty
                 }
                 
                 # if the $PropertyValue equals $null, we do not have to process anything. It doesn't need to be added to the 
                 # $PFObjectProperties hashtable, since $null is the implicit default value. no need to make that explicit.
-                if([string]::IsNullOrEmpty($PropertyValue)){ continue }
+                if([string]::IsNullOrEmpty($PropertyValues)){ continue }
+
+                # since the $ObjectToParse is the parsed XML-RPC message, all the values are (supposed to) XMLElements.
+                # we need to replace the XMLElement by its (string) actual value. All other adjustments can be done here as well.
+                $PropertyValues = $PropertyValues | ForEach-Object { ($_.PSObject.Properties.Name -contains "InnerText") ? $_.InnerText : $_ }
+
+                # we need to support two scenario's now: one where the $PropertyValue is a single item and one where it's an array of items
+                # in order to maintain only one workflow, we will make sure it is an array of items (or array of one item). 
+                # after typecasting the propertyvalues later in this cmdlet, we will convert again to single item if necessary.
+                if(($PropertyValues.GetType()).BaseType -ne [array]){ $PropertyValues = @($PropertyValues) }
 
                 # next step is to cast the $PropertyValue to the required type as specified in the PF* object
                 # if we omit this step, we will get an exception when trying to instantiate the object
@@ -187,20 +181,28 @@ function ConvertTo-PFObject{
                 $PropertyType = ($PropertyDefinition.Split(" ") | Select-Object -First 1).Replace("[]", "")
                 $PropertyIsCollection = $PropertyDefinition.Contains("[]")
 
-                # to ease the workflow, we will make sure that $PropertyValue is an array. then we convert each item in the array.
-                # the last step is to unwrap the array (fetching the last item) if $PropertyIsCollection is false. 
-                # TODO: in a next phase of the refactoring, combine this logic with the logic from the section in line 160-175
-                #       to make sure the explicit conversion to array is done there already
-                if(($PropertyValue.GetType()).BaseType -ne [array]){ $PropertyValue = @($PropertyValue) }
+                # TODO: the || and space splitted items will be not necessary anymore after PFAlias has been refactored to contain PFAliasEntries
+                #       known issue: PFAlias property Detail is split on space, which should not happen. BUT, properties Address/Detail need to be in their own object anyway
+                # If the property is (should be) a collection but contains only one item, we might need to split them.
+                if($PropertyIsCollection -and ($PropertyValues.Count -eq 1)){
+                    $PropertyValue = $PropertyValues | Select-Object -First 1
 
-                # TODO: the splitting of items by ||, space or comma
+                    foreach($Delimeter in @("||", ",", " ")){
+                        if($PropertyValue.Contains($Delimeter)){
+                            $PropertyValues = $PropertyValue.split($Delimeter)
+                            break # only split on 1 delimeter, so stop after one succesful split and do NOT continue with the other possible delimeters
+                        }
+                    }
+                }  
+
                 $PropertyTypedValues = New-Object System.Collections.ArrayList
-                foreach($Item in $PropertyValue){
+                foreach($PropertyValue in $PropertyValues){
                     switch($PropertyType){
                         # TODO: PFGateway
                         #"PFGateway"     { $PropertyTypedValue = $InputObject | Get-PFGateway -Name $Item } 
-                        "PFInterface"   { $PropertyTypedValue = $InputObject | Get-PFInterface -Name $Item } 
-                        default         { $PropertyTypedValue = $Item }
+                        "PFInterface"   { $PropertyTypedValue = $InputObject | Get-PFInterface -Name $PropertyValue }
+                        "bool"          { $PropertyTypedValue = ([bool]$PropertyValue -or ($PropertyValue -in ('yes', 'true', 'checked'))) }
+                        default         { $PropertyTypedValue = $PropertyValue }
                     }
 
                     $PropertyTypedValues.Add($PropertyTypedValue) | Out-Null
@@ -899,8 +901,8 @@ $DHCPdInterfaceIsPFInterface = $DHCPdInterfaceType -eq [PFInterface]
 Write-Host ("Typecheck of Interface property of DHCPd server 1: {0}" -f $DHCPdInterfaceType) -ForegroundColor ($DHCPdInterfaceIsPFInterface ? "Green" : "Red")
 
 # TODO: a lot
-#Write-Host "Registered static DHCP leases" -NoNewline -BackgroundColor Gray -ForegroundColor DarkGray
-#$PFServer | Get-PFDHCPStaticMap | Format-table *
+Write-Host "Registered static DHCP leases" -NoNewline -BackgroundColor Gray -ForegroundColor DarkGray
+$PFServer | Get-PFDHCPStaticMap | Format-table *
 
 
 # TODO: source/destination
@@ -915,20 +917,20 @@ Write-Host "Registered gateways" -NoNewline -BackgroundColor Gray -ForegroundCol
 $PFServer | Get-PFGateway | Format-table *
 
 # TODO: a lot
-#Write-Host "All NAT rules" -NoNewline -BackgroundColor Gray -ForegroundColor DarkGray
-#$PFServer | Get-PFNATRule | Format-table *
+Write-Host "All NAT rules" -NoNewline -BackgroundColor Gray -ForegroundColor DarkGray
+$PFServer | Get-PFNATRule | Format-table *
 
 # TODO: mapping to PFGateway object
 Write-Host "All static routes" -NoNewline -BackgroundColor Gray -ForegroundColor DarkGray
 $PFServer | Get-PFStaticRoute | Format-table *
 
 # TODO: mapping to PSObject 
-#Write-Host "DNS server settings" -NoNewline -BackgroundColor Gray -ForegroundColor DarkGray
-#$PFServer | Get-PFUnbound | Format-table *
+Write-Host "DNS server settings" -NoNewline -BackgroundColor Gray -ForegroundColor DarkGray
+$PFServer | Get-PFUnbound | Format-table *
 
 # TODO: mapping to PSObject
-#Write-Host "DNS host overrides" -NoNewline -BackgroundColor Gray -ForegroundColor DarkGray
-#$PFServer | Get-PFunboundHost | Format-table *
+Write-Host "DNS host overrides" -NoNewline -BackgroundColor Gray -ForegroundColor DarkGray
+$PFServer | Get-PFunboundHost | Format-table *
 
 Write-Host "THE END" -BackgroundColor Gray -ForegroundColor DarkGray
 exit;
