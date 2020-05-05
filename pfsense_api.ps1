@@ -62,8 +62,13 @@ Param
     [Parameter(Mandatory=$false, HelpMessage='The Password')] [string] $InsecurePassword,
     [Parameter(Mandatory=$false, HelpMessage='The service you would like to talke to')] [string] $Service,
     [Parameter(Mandatory=$false, HelpMessage='The action you would like to do on the service')] [string] $Action,
+    [Parameter(Mandatory=$false, HelpMessage='The Alias you would like to edit')] [string] $Alias,
+    [Parameter(Mandatory=$false, HelpMessage='Type you would like to use')] [string] $Type,
+    [Parameter(Mandatory=$false, HelpMessage='Address you would like to use')] [string] $Address,
+    [Parameter(Mandatory=$false, HelpMessage='Description you would like to use')] [string] $Description,
+    [Parameter(Mandatory=$false, HelpMessage='Detail you would like to use')] [string] $Detail,
     [Switch] $NoTLS,
-    [switch] $SkipCertificateCheck
+    [Switch] $SkipCertificateCheck
     )
 
 # Test to see if the xmlrpc is installed, if not install
@@ -286,6 +291,54 @@ function GetPFConfiguration {
     }    
 }
 
+function AddPFAlias {
+    [CmdletBinding()]
+    param (
+        [Parameter(Mandatory=$true)][Alias('Server')][PFServer]$InputObject
+    )
+    process {
+        if($InputObject.WorkingObject.Name.contains($InputObject.Arguments.Alias)){
+            $InputObject.WorkingObject | foreach{
+                if($_.name -eq $InputObject.Arguments.Alias){
+                    if($_.Type -eq $InputObject.Arguments.Type){
+                        "Alias {0} already excists, adding a second entry" -f $InputObject.Arguments.Alias
+                        $_.Address = $_.Address + $InputObject.Arguments.Address
+                        $_.Detail = $_.Detail + $InputObject.Arguments.Description
+                    }
+                    Else{
+                        "Alias {0} already excists, But has a diffecent Type {1}:{2}" -f $InputObject.Arguments.Alias,$InputObject.Arguments.Type,$_.Type
+                        exit
+                    }
+                }
+            }
+            
+        }
+        else{
+            $Properties = @{
+                Name = $InputObject.Arguments.Alias
+                Type = $InputObject.Arguments.Type
+                Address = $InputObject.Arguments.Address
+                Description = $InputObject.Arguments.Description
+                Detail = $InputObject.Arguments.Description
+            }
+            $Object = New-Object -TypeName "PFAlias" -Property $Properties
+
+            $InputObject.WorkingObject = $InputObject.WorkingObject + $Object
+        }
+        $InputObject.WorkingObject | Format-Table *
+    }
+}
+
+
+function GetPFAlias {
+    [CmdletBinding()]
+    param ([Parameter(Mandatory=$true, ValueFromPipeline=$true)][Alias('Server')][PFServer]$InputObject)
+    process {
+        ConvertToPFObject -InputObject $InputObject -PFObjectType "PFAlias" | out-null
+        return $InputObject | out-null
+    }
+}
+
 function GetPFInterface {
     [CmdletBinding()]
     param ([Parameter(Mandatory=$true, ValueFromPipeline=$true)][Alias('Server')][PFServer]$InputObject)   
@@ -294,14 +347,6 @@ function GetPFInterface {
         return $InputObject | out-null
     }
         
-}
-function GetPFAlias {
-    [CmdletBinding()]
-    param ([Parameter(Mandatory=$true, ValueFromPipeline=$true)][Alias('Server')][PFServer]$InputObject)
-    process {
-        ConvertToPFObject -InputObject $InputObject -PFObjectType "PFAlias" | out-null
-        return $InputObject | out-null
-    }
 }
 
 function GetPFdhcpd {
@@ -638,11 +683,21 @@ function TestPFCredential {
 # TODO: create a switch for the program to skip this contoller logic and be able to test dotsourcing this file in your own scripts too.
 Clear-Host
 
+$Arguments = @{
+    "Alias" = $Alias
+    "Type" = $Type
+    "Address" = $Address
+    "Description" = $Description
+    "Detail" = $Detail
+}
+
+
 $PFServer = [PFServer]@{
     Credential = $null 
     Address = $Server
     NoTLS = $NoTLS
     SkipCertificateCheck = $SkipCertificateCheck
+    Arguments = $Arguments
 }
 
 # Warn the user if no TLS encryption is used
@@ -758,6 +813,7 @@ exit;
 $Flow = @{
     "alias" = @{
         "print" = "param(`$InputObject); `$InputObject | GetPFAlias; `$InputObject.WorkingObject | Format-Table *"#the star makes the format table show more than 10 column's
+        "add" = "param(`$InputObject); `$InputObject | GetPFAlias; AddPFAlias -Server `$InputObject"
     }
 
     "gateway" = @{

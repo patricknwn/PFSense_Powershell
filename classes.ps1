@@ -223,6 +223,7 @@ class PFServer {
     [psobject]$Config = @{
         Interfaces = $null
     }
+    [hashtable]$Arguments
     
     [string] ToString(){        
         $Schema = ($this.NoTLS) ? "http" : "https"
