@@ -36,7 +36,7 @@ class PFDHCPd{
     static [string]$Section = "dhcpd"
     # property name as it appears in the XML, insofar it's different from the object's property name
     static $PropertyMapping = @{
-        Interface = "name"
+        Interface = "_key"
         RangeFrom = "range/from"
         RangeTo = "range/to"
         netmask = "netmask"

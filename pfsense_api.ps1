@@ -118,18 +118,14 @@ function ConvertTo-PFObject{
         # The hashtable key will be made available in the array as "_key"
         if($ObjectsInHashtable){
             $ObjectToParse.GetEnumerator() | ForEach-Object {
+                if($_.Value."_key"){ return } # this is how to simulate "continue" in a ForEach-Object block, see http://stackoverflow.com/questions/7760013/ddg#7763698
+
                 $_.Value.Add("_key", $_.Key)
             }
         }
 
         # now iterate over all objects and convert them
         $ObjectToParse.GetEnumerator() | ForEach-Object {
-            # optional, but easier for the refactoring. Makes sure we don't get a lot of unexpected errors in the beginning.
-            if($_.Value.GetType() -ne [hashtable]) { 
-                Write-Debug "Item in iterable is not the hashtable we expected"
-                return # this is how to simulate "continue" in a ForEach-Object block, see http://stackoverflow.com/questions/7760013/ddg#7763698
-            }
-
             # the last step of the process will be to create a new object. We need a container with the property values for the PF* object
             # so that we can splat them into the New-Object cmdlet later
             $PFObjectProperties = @{} 
@@ -150,12 +146,19 @@ function ConvertTo-PFObject{
 
                 # assign the uncasted property value. If there is a / in the property name, it means that it should be iterated one level deeper.
                 # unlimited deep nesting levels are supported.
-                # TODO: add some error handling/checking to prevent errors here if the $PropertyValue is $null or doesn't have a property $XMLProperty
-                $PropertyValue = $_.Value.$XMLProperty
+                # if $_ is a hashtable, the value is in $_.Value.$XMLProperty, when it's an array it's in $_.$XMLProperty
+                $XMLPropertyTree = $XMLProperty.Split("/")
+                $XMLPropertyRoot = $XMLPropertyTree | Select-Object -First 1
 
-                # foreach($XMLProperty in $XMLProperty.Split("/")){                    
-                #     $PropertyValue = $PropertyValue.$XMLProperty
-                # }
+                # first handle the root. We need to separate this because it's value comes form the array/hashtable $_
+                $PropertyValue = ($_.Value) ? $_.Value.$XMLPropertyRoot : $_.$XMLPropertyRoot
+
+                # now handle all lower levels (if none exists this step will be effectively skipped)
+                foreach($XMLProperty in ($XMLPropertyTree | Select-Object -Skip 1)){
+                    if(-not ($PropertyValue -and $PropertyValue.$XMLProperty)) { break }
+
+                    $PropertyValue = $PropertyValue.$XMLProperty
+                }
 
                 # since the $ObjectToParse is the parsed XML-RPC message, all the values are (supposed to) XMLElements.
                 # we need to replace the XMLElement by its (string) actual value
@@ -194,13 +197,10 @@ function ConvertTo-PFObject{
                 $PropertyTypedValues = New-Object System.Collections.ArrayList
                 foreach($Item in $PropertyValue){
                     switch($PropertyType){
-                        "PFInterface" { 
-                            $PropertyTypedValue = $InputObject | Get-PFInterface -Name $Item
-                        } 
-
-                        default {
-                            $PropertyTypedValue = $Item
-                        }
+                        # TODO: PFGateway
+                        #"PFGateway"     { $PropertyTypedValue = $InputObject | Get-PFGateway -Name $Item } 
+                        "PFInterface"   { $PropertyTypedValue = $InputObject | Get-PFInterface -Name $Item } 
+                        default         { $PropertyTypedValue = $Item }
                     }
 
                     $PropertyTypedValues.Add($PropertyTypedValue) | Out-Null
@@ -884,7 +884,7 @@ $PFServer | Get-PFInterface | Format-table *
 # works
 Write-Host "LAN interface:" -NoNewline -BackgroundColor Gray -ForegroundColor DarkGray
 $PFServer | Get-PFInterface -Name "lan" | Format-table *
-exit 
+
 # works
 # TODO: separate each address/detail in a separate child object, like PFAliasEntry or something like that. Each PFAlias should then contain a collection of these.
 Write-Host "Registered aliases:" -NoNewline -BackgroundColor Gray -ForegroundColor DarkGray
@@ -899,8 +899,8 @@ $DHCPdInterfaceIsPFInterface = $DHCPdInterfaceType -eq [PFInterface]
 Write-Host ("Typecheck of Interface property of DHCPd server 1: {0}" -f $DHCPdInterfaceType) -ForegroundColor ($DHCPdInterfaceIsPFInterface ? "Green" : "Red")
 
 # TODO: a lot
-Write-Host "Registered static DHCP leases" -NoNewline -BackgroundColor Gray -ForegroundColor DarkGray
-$PFServer | Get-PFDHCPStaticMap | Format-table *
+#Write-Host "Registered static DHCP leases" -NoNewline -BackgroundColor Gray -ForegroundColor DarkGray
+#$PFServer | Get-PFDHCPStaticMap | Format-table *
 
 
 # TODO: source/destination
@@ -914,24 +914,21 @@ $PFServer | Get-PFFirewallRule | Select-Object -ExcludeProperty Source, Destinat
 Write-Host "Registered gateways" -NoNewline -BackgroundColor Gray -ForegroundColor DarkGray
 $PFServer | Get-PFGateway | Format-table *
 
-Write-Host "Available interfaces" -NoNewline -BackgroundColor Gray -ForegroundColor DarkGray
-$PFServer | Get-PFInterface | Format-table *
-
 # TODO: a lot
-Write-Host "All NAT rules" -NoNewline -BackgroundColor Gray -ForegroundColor DarkGray
-$PFServer | Get-PFNATRule | Format-table *
+#Write-Host "All NAT rules" -NoNewline -BackgroundColor Gray -ForegroundColor DarkGray
+#$PFServer | Get-PFNATRule | Format-table *
 
 # TODO: mapping to PFGateway object
 Write-Host "All static routes" -NoNewline -BackgroundColor Gray -ForegroundColor DarkGray
 $PFServer | Get-PFStaticRoute | Format-table *
 
 # TODO: mapping to PSObject 
-Write-Host "DNS server settings" -NoNewline -BackgroundColor Gray -ForegroundColor DarkGray
-$PFServer | Get-PFUnbound | Format-table *
+#Write-Host "DNS server settings" -NoNewline -BackgroundColor Gray -ForegroundColor DarkGray
+#$PFServer | Get-PFUnbound | Format-table *
 
 # TODO: mapping to PSObject
-Write-Host "DNS host overrides" -NoNewline -BackgroundColor Gray -ForegroundColor DarkGray
-$PFServer | Get-PFunboundHost | Format-table *
+#Write-Host "DNS host overrides" -NoNewline -BackgroundColor Gray -ForegroundColor DarkGray
+#$PFServer | Get-PFunboundHost | Format-table *
 
 Write-Host "THE END" -BackgroundColor Gray -ForegroundColor DarkGray
 exit;
