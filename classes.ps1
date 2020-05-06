@@ -185,12 +185,12 @@ class PFInterface {
 }
 
 class PFNATRule {
-    [string]$SourceType
+    [hashtable]$Source
     [string]$SourceAddress
     [string]$SourcePort
-    [string]$DestType
-    [string]$DestAddress
-    [string]$DestPort
+    [hashtable]$Destination
+    [string]$DestinationAddress
+    [string]$DestinationPort
     [string]$protocol
     [string]$target
     [string]$LocalPort
@@ -202,12 +202,12 @@ class PFNATRule {
     static $PropertyMapping = @{ 
         LocalPort = "local-port"
         Description = "descr"
-        SourceType = "source/keys"
-        SourceAddress= "source/network" #ToDo: find a way for multiple options because address needs to be here as well
-        SourcePort = "source/port"
-        DestType = "destination/keys"
-        DestAddress= "destination/network"
-        DestPort = "destination/port"
+        Source = "source" 
+        SourceAddress= $null
+        SourcePort = $null
+        Destination = "destination"
+        DestAddress= $null
+        DestPort = $null
         
     }
 }
@@ -217,8 +217,17 @@ class PFServer {
     [pscredential]$Credential
     [bool]$NoTLS
     [bool]$SkipCertificateCheck = $false
-    [System.Xml.XmlDocument]$XMLConfig     # XML-RPC answer when requesting the current configuration
-    [psobject]$PSConfig # $this.XMLConfig parsed to powershell objects by the XmlRpc library
+#<<<<<<< api_xml_rpc
+#    [System.Xml.XmlDocument]$XMLConfig     # XML-RPC answer when requesting the current configuration
+#    [psobject]$PSConfig # $this.XMLConfig parsed to powershell objects by the XmlRpc library
+#=======
+    [XML]$XMLConfig
+    [psobject]$PFConfig
+    [psobject]$WorkingObject
+    [psobject]$Config = @{
+        Interfaces = $null
+    }
+    [hashtable]$Arguments
     
     [string] ToString(){        
         $Schema = ($this.NoTLS) ? "http" : "https"

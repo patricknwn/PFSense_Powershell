@@ -62,8 +62,13 @@ Param
     [Parameter(Mandatory=$false, HelpMessage='The Password')] [string] $InsecurePassword,
     [Parameter(Mandatory=$false, HelpMessage='The service you would like to talke to')] [string] $Service,
     [Parameter(Mandatory=$false, HelpMessage='The action you would like to do on the service')] [string] $Action,
+    [Parameter(Mandatory=$false, HelpMessage='The Alias you would like to edit')] [string] $Alias,
+    [Parameter(Mandatory=$false, HelpMessage='Type you would like to use')] [string] $Type,
+    [Parameter(Mandatory=$false, HelpMessage='Address you would like to use')] [string] $Address,
+    [Parameter(Mandatory=$false, HelpMessage='Description you would like to use')] [string] $Description,
+    [Parameter(Mandatory=$false, HelpMessage='Detail you would like to use')] [string] $Detail,
     [Switch] $NoTLS,
-    [switch] $SkipCertificateCheck
+    [Switch] $SkipCertificateCheck
     )
 
 # Test to see if the xmlrpc is installed, if not install
@@ -377,10 +382,45 @@ function Get-PFInterface {
         } else {           
             return ($Interfaces | Where-Object { $_.Name -eq $Name })
         }
+
+function AddPFAlias {
+    [CmdletBinding()]
+    param (
+        [Parameter(Mandatory=$true)][Alias('Server')][PFServer]$InputObject
+    )
+    process {
+        if($InputObject.WorkingObject.Name.contains($InputObject.Arguments.Alias)){
+            $InputObject.WorkingObject | foreach{
+                if($_.name -eq $InputObject.Arguments.Alias){
+                    if($_.Type -eq $InputObject.Arguments.Type){
+                        "Alias {0} already excists, adding a second entry" -f $InputObject.Arguments.Alias
+                        $_.Address = $_.Address + $InputObject.Arguments.Address
+                        $_.Detail = $_.Detail + $InputObject.Arguments.Description
+                    }
+                    Else{
+                        "Alias {0} already excists, But has a diffecent Type {1}:{2}" -f $InputObject.Arguments.Alias,$InputObject.Arguments.Type,$_.Type
+                        exit
+                    }
+                }
+            }
+            
+        }
+        else{
+            $Properties = @{
+                Name = $InputObject.Arguments.Alias
+                Type = $InputObject.Arguments.Type
+                Address = $InputObject.Arguments.Address
+                Description = $InputObject.Arguments.Description
+                Detail = $InputObject.Arguments.Description
+            }
+            $Object = New-Object -TypeName "PFAlias" -Property $Properties
+
+            $InputObject.WorkingObject = $InputObject.WorkingObject + $Object
+        }
+        $InputObject.WorkingObject | Format-Table *
     }
-        
 }
-function Get-PFAlias {
+function GetPFAlias {
     [CmdletBinding()]
     param ([Parameter(Mandatory=$true, ValueFromPipeline=$true)][Alias('Server')][PFServer]$InputObject)
     process {
@@ -388,7 +428,17 @@ function Get-PFAlias {
     }
 }
 
-function Get-PFDHCPd {
+function GetPFInterface {
+    [CmdletBinding()]
+    param ([Parameter(Mandatory=$true, ValueFromPipeline=$true)][Alias('Server')][PFServer]$InputObject)   
+    process { 
+        ConvertToPFObject -InputObject $InputObject -PFObjectType "PFInterface" | out-null
+        return $InputObject | out-null
+    }
+        
+}
+
+function GetPFdhcpd {
     [CmdletBinding()]
     param ([Parameter(Mandatory=$true, ValueFromPipeline=$true)][Alias('Server')][PFServer]$InputObject)
     process {
@@ -483,7 +533,34 @@ function Get-PFNATRule {
     }
 
 }
-function Get-PFStaticRoute {
+
+function PrintPFNATRule {
+    [CmdletBinding()]
+    param ([Parameter(Mandatory=$true, ValueFromPipeline=$true)][Alias('Server')][PFServer]$InputObject)
+    process {
+            foreach($Rule in $InputObject.WorkingObject){
+                ("Source","Destination") | foreach {
+                    $Rule.$($_+"Port") = ($Rule.$_.Port) ? $Rule.$_.Port.InnerText : "any"
+
+                    if($Rule.$_.Contains("any")){
+                        $Rule.$($_+"address") = "any"
+
+                    } elseif($Rule.$_.Contains("address")) {
+                        $Rule.$($_+"address") = $Rule.$_.address.InnerText
+
+                    } elseif($Rule.$_.Contains("network")){
+                    if($($Rule.$_.network.InnerText).endswith("ip")){
+                        $Rule.$($_+"address") = ("{0} address" -f $Rule.$_.network.InnerText.split("ip")[0])
+                    }
+                        else{$Rule.$($_+"address") = ("{0} network" -f $Rule.$_.network.InnerText)}
+                    }
+                }
+            }
+        return $InputObject | out-null
+    }
+}
+
+function GetPFStaticRoute {
     [CmdletBinding()]
     param ([Parameter(Mandatory=$true, ValueFromPipeline=$true)][Alias('Server')][psobject]$InputObject)
     process {
@@ -688,10 +765,24 @@ function TestPFCredential {
 # TODO: create a switch for the program to skip this contoller logic and be able to test dotsourcing this file in your own scripts too.
 Clear-Host
 
+
 $PFServer = New-Object PFServer -Property @{
+
+$Arguments = @{
+    "Alias" = $Alias
+    "Type" = $Type
+    "Address" = $Address
+    "Description" = $Description
+    "Detail" = $Detail
+}
+
+
+$PFServer = [PFServer]@{
+    Credential = $null 
     Address = $Server
     NoTLS = $NoTLS
     SkipCertificateCheck = $SkipCertificateCheck
+    Arguments = $Arguments
 }
 
 # Warn the user if no TLS encryption is used
@@ -726,8 +817,9 @@ $PFServer = ($PFServer | Get-PFConfiguration -NoCache)
 
 <# test objects
 # make a clear visual distinction between this run and the previous run
-#<#
-1..30 | ForEach-Object { Write-Host "" }
+#
+<#1..30 | ForEach-Object { Write-Host "" }
+
 
 # works
 Write-Host "Known interfaces:" -NoNewline -BackgroundColor Gray -ForegroundColor DarkGray
@@ -788,7 +880,10 @@ exit;
 <# define the possible execution flows #>
 $Flow = @{
     "alias" = @{
-        "print" = "param(`$InputObject); `$InputObject | Get-PFAlias | Format-Table *"#the star makes the format table show more than 10 column's
+#        "print" = "param(`$InputObject); `$InputObject | Get-PFAlias | Format-Table *"#the star makes the format table show more than 10 column's
+#        "print" = "param(`$InputObject); `$InputObject | GetPFAlias; `$InputObject.WorkingObject | Format-Table *"#the star makes the format table show more than 10 column's
+        "add" = "param(`$InputObject); `$InputObject | GetPFAlias; AddPFAlias -Server `$InputObject"
+
     }
 
     "gateway" = @{
@@ -812,7 +907,9 @@ $Flow = @{
     }   
 
     "portfwd" = @{
-        "print" = "param(`$InputObject); `$InputObject | Get-PFNATRule | Format-table *"
+#        "print" = "param(`$InputObject); `$InputObject | Get-PFNATRule | Format-table *"
+#        "print" = "param(`$InputObject); `$InputObject | GetPFNATRule; `$InputObject | PrintPFNatRule; `$InputObject.WorkingObject | Select-Object -ExcludeProperty Source, Destination | Format-table *"
+
     }    
     "Firewall" = @{
         "print" = "param(`$InputObject); `$InputObject | Get-PFFirewallRule | PrintPFFirewallRule | Select-Object -ExcludeProperty Source, Destination | Format-table *" 
@@ -826,7 +923,7 @@ $Flow = @{
 
 }
 
-# execute requested flow
+# execute requested flow  
 try{
     if(-not $Flow.ContainsKey($Service)){  Write-Host "Unknown service '$Service'" -ForegroundColor red; exit 2 }
     if(-not $Flow.$Service.ContainsKey($Action)){ Write-Host "Unknown action '$Action' for service '$Service'" -ForegroundColor red; exit 3 }
